@@ -158,16 +158,20 @@ Two things to know:
 
 ```bash
 dotnet build Dbr.slnx      # build everything
-dotnet test  Dbr.slnx      # (no test projects yet)
+dotnet test  Dbr.slnx      # run the test suite
 ```
 
 The solution is `Dbr.slnx` (the XML solution format that .NET 10 emits by default). Projects live
-under `src/`, with shared MSBuild properties in `Directory.Build.props`:
+under `src/` and tests under `tests/`, with shared MSBuild properties in `Directory.Build.props`:
 
 ```
 Dbr.Domain  ←  Dbr.Infrastructure  ←  Dbr.Api
                                    ←  Dbr.Worker
 ```
+
+Tests are xUnit v3 and run on Microsoft.Testing.Platform, so each test project is also an
+executable — `dotnet run --project tests/Dbr.Infrastructure.Tests` runs just that project's tests
+and prints per-test output, which is usually what you want while iterating.
 
 To run the API against the containerized infrastructure, start the backing services only:
 
@@ -175,6 +179,11 @@ To run the API against the containerized infrastructure, start the backing servi
 docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml up postgres rabbitmq openbao-init -d
 dotnet run --project src/Dbr.Api
 ```
+
+The overlay is what publishes Postgres on `localhost:5432`; the `Development` settings files point
+the API and Worker there. Outside compose, and outside `Development`, both services need
+`ConnectionStrings__Core` set — they refuse to start without it rather than failing on the first
+request that needs a database.
 
 Every source file carries an SPDX header:
 

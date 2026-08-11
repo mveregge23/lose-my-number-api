@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings come from Directory.Build.props. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- xunit.v3 runs tests through Microsoft.Testing.Platform: each test project is
+         a self-contained executable rather than something a separate VSTest host
+         discovers. That is what makes the per-project selective CI runs in §21.8
+         (DBR-089) and the nightly full suite (DBR-090) straightforward to drive. -->
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <!-- In-memory configuration for the composition-root tests. Only the tests need
+         a concrete provider; Dbr.Infrastructure itself depends on the abstraction. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Dbr.Infrastructure\Dbr.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>
