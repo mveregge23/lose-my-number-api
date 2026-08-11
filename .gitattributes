@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# LF in the repository for every text file. `dotnet new` emits CRLF for some of its
+# templates and LF for others, which is how the first four scaffolded files ended up
+# disagreeing with every hand-written one — and it shows up as a whole-file diff the
+# first time anybody edits one of them, hiding the actual change.
+#
+# eol=lf rather than eol=native: the shell scripts in openbao/ are bind-mounted
+# straight into Linux containers, where a CRLF shebang line is a runtime failure.
+
+* text=auto eol=lf
+
+# Binary — never touch these.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.pdf binary
