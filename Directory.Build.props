@@ -1,0 +1,12 @@
+<Project>
+
+  <!-- Shared across every project in the solution. Individual .csproj files carry
+       only what is genuinely project-specific (SDK, package refs, project refs). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

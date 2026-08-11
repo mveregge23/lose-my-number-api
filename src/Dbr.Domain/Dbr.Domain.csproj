@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Entities only. Deliberately has no EF Core dependency — persistence lives
+       in Dbr.Infrastructure so §19.2's later Api.Core/SelfHosted/Hosted split has
+       a clean layer to depend on. -->
+
+</Project>
