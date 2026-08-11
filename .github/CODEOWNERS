@@ -1,0 +1,21 @@
+# Review tiers per §12.5 (catalog trust tiers) and §18.7 (migrations).
+#
+# GitHub enforces "N required approvals" repo-wide via branch protection,
+# not per-path — the two-tier split below only becomes real once a second
+# maintainer/counsel reviewer exists to list alongside @mveregge23. Until
+# then, every path funnels through the sole maintainer regardless of tier;
+# this file documents the intended split so it's a one-line change (add a
+# name) rather than a redesign when the contributor base grows.
+
+# Default owner
+*                       @mveregge23
+
+# Broker recipes — data, not code — 1 maintainer approval (§9.1, §12.5)
+/catalog/brokers/       @mveregge23
+
+# Custom connectors and legal-basis content — 2 maintainer/counsel approvals (§12.5)
+/catalog/connectors/    @mveregge23
+/catalog/legal-basis/   @mveregge23
+
+# Database migrations — same two-approval tier as connectors/legal-basis (§18.7)
+/db/migrations/         @mveregge23
