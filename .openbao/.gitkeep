@@ -1,0 +1,2 @@
+# Keeps this directory in git so Docker does not create it as root on Linux.
+# Everything else here is gitignored: unseal key and root token live here.

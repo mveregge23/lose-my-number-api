@@ -39,6 +39,15 @@ ScaffoldingReadMe.txt
 # dotenv environment variables file
 .env
 
+# OpenBao unseal key + root token, written by the openbao-init service.
+# Local development only — these decrypt everything in the openbao-data volume.
+# The directory itself is tracked (via .gitkeep) so it exists on a fresh clone
+# owned by the cloning user: on Linux, Docker creates a missing bind-mount source
+# as root, which then breaks a non-root `docker compose up`. Its contents are
+# never tracked.
+.openbao/*
+!.openbao/.gitkeep
+
 # Others
 ~$*
 *~

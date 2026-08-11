@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Opt-in overlay: publishes the backing services on the host so you can reach
+# them with psql, a Postgres GUI, or the RabbitMQ management UI.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml up
+#
+# Kept out of the base file because a host that already runs Postgres on 5432
+# would otherwise fail to start the stack at all. Every port is overridable via
+# .env if the defaults collide here too.
+
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  rabbitmq:
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"   # management UI
+
+  openbao:
+    ports:
+      - "${BAO_PORT:-8200}:8200"
