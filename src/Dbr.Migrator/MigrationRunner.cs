@@ -84,6 +84,12 @@ public sealed class MigrationRunner(
             // run inside a transaction, so the first migration that wants one needs
             // a deliberate exception here, not a quiet removal of this line.
             .WithTransactionPerScript()
+            // DbUp substitutes $token$ placeholders by default and throws on one it
+            // has no value for. plpgsql dollar-quoting uses exactly that shape — a
+            // function body delimited $body$ ... $body$ would be read as a template
+            // variable and fail the migration. Nothing here templates anything, so
+            // the feature is turned off rather than worked around at each call site.
+            .WithVariablesDisabled()
             .JournalToPostgresqlTable("public", set.JournalTable)
             .LogTo(log)
             .Build();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Infrastructure.Persistence;
+using Dbr.Infrastructure.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -47,11 +48,20 @@ public static class InfrastructureServiceCollectionExtensions
                 "means supplying it yourself — see the README quickstart.");
         }
 
+        // Scoped to the unit of work — an API request, or one consumed message. Both
+        // registrations resolve to the same instance so whoever establishes the tenant
+        // writes to the object the interceptor reads.
+        services.AddScoped<TenantContext>();
+        services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+        services.AddScoped<TenantSessionInterceptor>();
+
         // AddDbContext, not AddDbContextPool: pooling reuses context instances across
-        // requests, and DBR-004 is about to attach per-request tenant state to the
+        // requests, and the interceptor below attaches per-request tenant state to the
         // connection. Pooling that correctly is possible but is a sharp edge on the
         // one boundary §4 says has to fail closed. Revisit under load, not before.
-        services.AddDbContext<DbrDbContext>(options => options.UseDbr(connectionString));
+        services.AddDbContext<DbrDbContext>((sp, options) => options
+            .UseDbr(connectionString)
+            .AddInterceptors(sp.GetRequiredService<TenantSessionInterceptor>()));
 
         return services;
     }

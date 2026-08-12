@@ -19,6 +19,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Reaching the services from your machine](#reaching-the-services-from-your-machine)
 - [Data persistence](#data-persistence)
 - [Database migrations](#database-migrations)
+- [The tenant boundary](#the-tenant-boundary)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
 - [Working on the code without Docker](#working-on-the-code-without-docker)
 - [Deployment modes](#deployment-modes)
@@ -174,6 +175,49 @@ set of rules.
 
 Each script runs inside a transaction, and Postgres DDL is transactional, so a script that fails
 halfway leaves the schema exactly as it was — the migrator exits non-zero and nothing starts.
+
+## The tenant boundary
+
+Tenant isolation is enforced by Postgres row-level security, not by remembering to
+write `.Where(t => t.TenantId == ...)`. A query that forgets the filter returns
+nothing; it does not return someone else's rows.
+
+Three pieces make that true:
+
+1. **`app.tenant_id`** — a session setting carrying the current tenant, written by
+   `TenantSessionInterceptor` on every connection open, including writing it *blank*
+   when there is no tenant. Connections are pooled, so leaving a stale value behind
+   would be a cross-tenant read that looks exactly like a correct one.
+2. **`app.current_tenant_id()`** — reads that setting. Unset or blank resolves to
+   `NULL`, and `tenant_id = NULL` is `NULL` rather than true, so a connection that
+   never identified a tenant matches zero rows. The fail-closed behaviour falls out
+   of SQL's three-valued logic rather than depending on a check somewhere.
+3. **`dbr_app`** — the role the application acts as, via `SET ROLE`.
+
+That third piece is the one that is easy to get wrong, and worth stating plainly: **a
+policy alone would isolate nothing here.** Postgres skips row-level security for
+superusers, for roles holding `BYPASSRLS`, and — unless the table is `FORCE`d — for
+the table's own owner. The role this stack connects as is all three. `dbr_app` is
+`NOSUPERUSER NOBYPASSRLS`, so the rules apply to it; it is also `NOLOGIN`, reached by
+`SET ROLE` over the existing connection rather than by authenticating, so no second
+credential has to be provisioned, distributed or rotated.
+
+A tenant-scoped table opts in from its own migration:
+
+```sql
+CALL app.enable_tenant_rls('public.tenant');
+```
+
+which enables and forces RLS, creates the `tenant_isolation` policy over both reads
+(`USING`) and writes (`WITH CHECK`), and grants `dbr_app` its DML. It refuses a table
+with no `tenant_id` column rather than creating a policy that fails later at query
+time.
+
+> **Not a defence against arbitrary SQL.** The application connects with a role that
+> could `RESET ROLE`. This boundary is aimed squarely at the failure §4 names — a
+> missing filter in application code — and it makes that failure closed rather than
+> silent. A deployment wanting the stronger property should connect as a dedicated
+> login role that is not a superuser; nothing here has to change for that to work.
 
 ## OpenBao, sealing, and the unseal key
 

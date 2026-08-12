@@ -23,4 +23,11 @@
     <ProjectReference Include="..\Dbr.Domain\Dbr.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The exact SQL the tenant interceptor sends is an implementation detail to
+         callers but the thing worth asserting in a test, since §4's boundary depends
+         on its precise shape. -->
+    <InternalsVisibleTo Include="Dbr.Infrastructure.Tests" />
+  </ItemGroup>
+
 </Project>
