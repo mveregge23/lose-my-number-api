@@ -36,6 +36,9 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 | Docker | 29.x + Compose v2 | Docker Desktop on macOS/Windows, or Docker Engine on Linux |
 | .NET SDK | 10.0 | Only needed to build/test outside containers |
 
+The integration test suite also needs Docker, since it starts its own throwaway Postgres and
+OpenBao containers — see [Working on the code without Docker](#working-on-the-code-without-docker).
+
 Nothing else. No local Postgres, RabbitMQ, or key-management service is required — the compose
 stack brings its own.
 
@@ -257,6 +260,22 @@ Dbr.Domain  ←  Dbr.Infrastructure  ←  Dbr.Api
 Tests are xUnit v3 and run on Microsoft.Testing.Platform, so each test project is also an
 executable — `dotnet run --project tests/Dbr.Infrastructure.Tests` runs just that project's tests
 and prints per-test output, which is usually what you want while iterating.
+
+| Project | Needs Docker | Covers |
+|---|---|---|
+| `Dbr.Infrastructure.Tests` | no | Mapping conventions, the tenant context, what the interceptor sends |
+| `Dbr.Migrator.Tests` | no | Migration filenames, set membership and ordering, misconfigured runs |
+| `Dbr.Integration.Tests` | **yes** | Tenant isolation and the migrations, against a real Postgres and a real OpenBao |
+
+`Dbr.Integration.Tests` starts its own throwaway containers with Testcontainers — it does not use
+the compose stack, and does not care whether that stack is running. It needs a working Docker
+daemon; without one, those tests fail rather than skip, because a green run that quietly skipped
+the only tests capable of observing tenant isolation would be worse than a red one.
+
+Tenant isolation is the one thing in this repository that cannot be tested any other way. The
+property under test is what Postgres itself does when a session variable is missing, so an
+in-memory provider — which has no policies, no roles and no `current_setting` — would report
+success whether the boundary existed or not.
 
 To run the API against the containerized infrastructure, start the backing services only:
 
