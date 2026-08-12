@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A force-push or a quick follow-up commit makes the in-flight run redundant.
+# Cancelling it frees the runner for the version somebody is actually waiting on.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  # Nothing here runs interactively, and the progress animation makes the logs
+  # unreadable when something does go wrong.
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Dbr.slnx
+
+      # -warnaserror rather than a permanent TreatWarningsAsErrors: locally a
+      # warning should be something you can see and keep working past, but nothing
+      # that warns has any business reaching main.
+      - name: Build
+        run: dotnet build Dbr.slnx --no-restore --configuration Release -warnaserror
+
+      # The integration suite starts its own Postgres and OpenBao through
+      # Testcontainers, which works on this runner without a service container or
+      # any setup — the Docker daemon is already there. It fails rather than skips
+      # if that ever stops being true, which is the point: a green run that quietly
+      # skipped the only tests that can observe tenant isolation would be worse
+      # than a red one.
+      - name: Test
+        run: dotnet test Dbr.slnx --no-build --configuration Release
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Dbr.slnx
+
+      # Formatting only. Analyzer opinions are the build's job above, where
+      # -warnaserror already gates them; running them here too would report the
+      # same problem twice and blur what a lint failure means.
+      - name: Formatting
+        run: |
+          dotnet format whitespace Dbr.slnx --no-restore --verify-no-changes
+          dotnet format style Dbr.slnx --no-restore --verify-no-changes
+
+      # The licence headers are a real obligation, not a style preference: this is
+      # an AGPL project, and a file that ships without its SPDX tag is one whose
+      # licence a downstream consumer has to guess at. Nothing else checks for them.
+      - name: SPDX headers
+        run: ./scripts/check-spdx-headers.sh

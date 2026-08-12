@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using System.Reflection;
-using DbUp.Engine.Output;
 using Dbr.Migrator;
+using DbUp.Engine.Output;
 
 // One-shot. Self-hosted, this is the compose service the API and Worker gate on with
 // `service_completed_successfully`; hosted, the identical binary is an explicit

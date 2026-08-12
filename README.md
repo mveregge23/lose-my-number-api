@@ -400,6 +400,29 @@ Contributions are welcome. A few conventions worth knowing up front:
 Reviewer expectations vary by path (see `.github/CODEOWNERS`): broker recipes are reviewed as data,
 while connectors, legal-basis content, and database migrations carry a higher bar.
 
+### What CI checks
+
+Every pull request runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). To see the same
+result before pushing:
+
+```bash
+dotnet build Dbr.slnx -warnaserror        # nothing that warns reaches main
+dotnet test  Dbr.slnx                     # needs Docker for the integration tier
+dotnet format whitespace Dbr.slnx --verify-no-changes
+dotnet format style      Dbr.slnx --verify-no-changes
+./scripts/check-spdx-headers.sh
+```
+
+`-warnaserror` is passed on the command line rather than set in the project files on purpose:
+locally a warning should be something you can see and keep working past, but nothing that warns
+belongs on `main`.
+
+The formatting step checks formatting only — analyzer diagnostics are already gated by the build
+above, and running them in both places would report the same problem twice and blur what a lint
+failure means. `.editorconfig` is deliberately small: every rule in it is one a contributor can
+have a PR rejected over, which is worth spending only on decisions that would otherwise be argued
+about in review.
+
 ## License
 
 [GNU AGPL-3.0-or-later](LICENSE). The network-use clause is deliberate: running a modified version
