@@ -3,6 +3,7 @@
 
 using System.Text.RegularExpressions;
 using Dbr.Infrastructure.Persistence;
+using Dbr.Infrastructure.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dbr.Infrastructure.Tests.Persistence;
@@ -31,7 +32,8 @@ public partial class DbrDbContextModelTests
         using var context = new DbrDbContext(
             new DbContextOptionsBuilder<DbrDbContext>()
                 .UseDbr("Host=localhost;Database=dbr;Username=dbr;Password=x")
-                .Options);
+                .Options,
+            new TenantContext());
 
         var mismatches = context.Model.GetEntityTypes()
             .Where(entityType => entityType.GetTableName() is not null && !entityType.IsOwned())

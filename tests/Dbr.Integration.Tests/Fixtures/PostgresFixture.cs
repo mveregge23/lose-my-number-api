@@ -37,8 +37,7 @@ namespace Dbr.Integration.Tests.Fixtures;
 /// </remarks>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:17-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("dbr")
         .WithUsername("dbr")
         .WithPassword("dbr_test_password")

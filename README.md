@@ -205,6 +205,15 @@ the table's own owner. The role this stack connects as is all three. `dbr_app` i
 `SET ROLE` over the existing connection rather than by authenticating, so no second
 credential has to be provisioned, distributed or rotated.
 
+A fourth piece sits above the database, as defence in depth rather than as the boundary itself:
+an entity implementing `ITenantScoped` gets an EF Core query filter narrowing it to the current
+tenant, applied by convention to every such entity rather than listed per type. It is not what
+keeps tenants apart — the policies are, and they hold whether it runs or not. It exists because the
+policies are enforced somewhere the application cannot see, by configuration it does not control: a
+table whose migration forgot to opt in, a revoked `FORCE`, a connection that arrived as the wrong
+role. In each of those the database would hand back every tenant's rows, and the application asks
+for only its own anyway.
+
 A tenant-scoped table opts in from its own migration:
 
 ```sql

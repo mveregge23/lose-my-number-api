@@ -37,8 +37,7 @@ public sealed class OpenBaoFixture : IAsyncLifetime
 {
     private const string RootToken = "dbr_test_root_token";
 
-    private readonly IContainer _container = new ContainerBuilder()
-        .WithImage("openbao/openbao:2")
+    private readonly IContainer _container = new ContainerBuilder("openbao/openbao:2")
         .WithEnvironment("BAO_DEV_ROOT_TOKEN_ID", RootToken)
         .WithEnvironment("BAO_DEV_LISTEN_ADDRESS", "0.0.0.0:8200")
         .WithCommand("server", "-dev")
