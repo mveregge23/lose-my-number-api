@@ -134,6 +134,13 @@ services:
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-dbr_dev_password}
       Bao__Address: http://openbao:8200
       Bao__Token: ${BAO_TOKEN:-dbr_dev_root_token}
+      # A passkey is bound to the domain it was created for and is offered nowhere
+      # else, so these two describe where this instance is reached from a browser
+      # rather than where it listens. The defaults match the port mapping below;
+      # changing API_PORT means setting PASSKEY_ORIGIN to match, or every ceremony is
+      # refused by the browser before the server ever sees it.
+      Passkeys__RelyingPartyId: ${PASSKEY_RELYING_PARTY_ID:-localhost}
+      Passkeys__Origins__0: ${PASSKEY_ORIGIN:-http://localhost:8080}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:

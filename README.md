@@ -20,6 +20,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Data persistence](#data-persistence)
 - [Database migrations](#database-migrations)
 - [The tenant boundary](#the-tenant-boundary)
+- [Signing in: passkeys](#signing-in-passkeys)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
 - [Working on the code without Docker](#working-on-the-code-without-docker)
 - [Deployment modes](#deployment-modes)
@@ -230,6 +231,63 @@ time.
 > application code, and it makes that failure closed rather than silent. A deployment wanting the stronger property should connect as a dedicated
 > login role that is not a superuser; nothing here has to change for that to work.
 
+## Signing in: passkeys
+
+Accounts are opened and entered with a passkey. There is no password, and no step where you
+type an address and are told whether it has an account here.
+
+That second part is the design constraint everything else follows from. This service exists for
+people trying to reduce what is known about them, so an endpoint answering *"is
+someone@example.com registered?"* would be handing out exactly the kind of fact the service is
+meant to remove. So sign-in asks for no identifier at all:
+
+1. `POST /api/v1/auth/login/options` — no request body. The server issues a challenge naming no
+   account and no credential.
+2. The browser offers whatever passkey it holds for this site and signs the challenge.
+3. `POST /api/v1/auth/login` — the server works out whose account it is *from the credential
+   that answered*.
+
+Signing up is the same shape, with an address so the passkey has a label in your authenticator:
+`POST /api/v1/auth/register/options` with `{"email": "..."}`, then `POST /api/v1/auth/register`
+with what the browser produced. **Nothing is written until the authenticator answers** — an
+abandoned signup leaves no account behind.
+
+Two consequences worth knowing before you deploy this:
+
+- **Passkeys must be discoverable** (resident keys), and the authenticator must verify its
+  holder — a biometric or a PIN. An authenticator with no room to store a resident credential
+  cannot be used here. That is the cost of never asking who you are, and it is deliberate.
+- **Adding a second passkey to an existing account is not built yet.** It needs the request to
+  prove which account it is for, and this instance does not issue tokens yet. Until then an
+  account has exactly the one passkey it was opened with — worth knowing before you rely on it.
+
+### Configuring the relying party
+
+A passkey is bound to one domain and is offered on no other. That is what makes it unphishable,
+and it means these settings describe **where a browser reaches this instance**, not where the API
+listens:
+
+| Setting | Environment variable | Default |
+|---|---|---|
+| `Passkeys:RelyingPartyId` | `PASSKEY_RELYING_PARTY_ID` | `localhost` |
+| `Passkeys:Origins:0` | `PASSKEY_ORIGIN` | `http://localhost:8080` |
+
+The defaults match the compose port mapping, so `docker compose up` works untouched. Beyond that:
+
+- **Change `API_PORT` and you must change `PASSKEY_ORIGIN` to match.** Otherwise the browser
+  refuses every ceremony before the server ever sees the request.
+- **Set the relying party to your registrable domain, not the exact host.** `example.com` gets
+  passkeys that work on `app.example.com` too; `app.example.com` gets passkeys offered on that
+  one host and nowhere else.
+- **Changing the relying party after accounts exist invalidates every passkey already
+  registered.** The browser will no longer offer them, and there is no migration for it. Pick it
+  before anyone signs up.
+
+Startup refuses a configuration that cannot work — a relying party written as a URL, an origin
+outside it, an empty origin list. That is deliberate: every one of those mistakes otherwise
+surfaces as a browser silently refusing a ceremony, which needs a real authenticator to reproduce
+and says nothing about which setting was wrong.
+
 ## OpenBao, sealing, and the unseal key
 
 OpenBao encrypts its storage with a master key, which is itself protected by an **unseal key**. On
@@ -338,6 +396,15 @@ If you are only running this locally, you can stop reading here. If you are depl
 | `tls_disable = true` on the OpenBao listener | Traffic never leaves the compose network | TLS terminated at the listener, or a mutually-authenticated mesh |
 | `docker-compose.dev-ports.yml` publishing Postgres/RabbitMQ/OpenBao | You need psql and the UIs | Never used. Backing services stay off any public interface |
 | Migrations run automatically at startup | One machine, one instance | An explicit pre-deploy step — multiple replicas racing to migrate is exactly what that avoids |
+| Passkey relying party is `localhost` over plain HTTP | It is the only origin your browser will reach | Your real domain over HTTPS. Browsers refuse WebAuthn on any non-`localhost` origin without it, so this is enforced whether you set it or not |
+
+One gap is worth naming rather than leaving to be discovered: **completing a signup for an
+address that already has an account answers `409`**, which tells the caller that address is
+registered. Reaching that answer costs a full, valid ceremony — an authenticator has to sign this
+server's challenge before the address is ever compared — so it is not a probe you can run in a
+loop, but it is not nothing either. It closes when signup starts verifying addresses by mail,
+which needs a notification path this instance does not have yet; at that point signup answers the
+same way whether or not the address is known.
 
 The intended hosted architecture treats the boundary as structural rather than procedural: the
 hosted composition root is a different entrypoint from the self-hosted one, so hosted-only

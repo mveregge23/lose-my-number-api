@@ -19,6 +19,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Formats.Cbor" Version="10.0.4" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
     <!-- The generic builder, for OpenBao: there is no first-party module for it. -->

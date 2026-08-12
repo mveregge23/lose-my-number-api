@@ -87,14 +87,25 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// <summary>
     /// A service provider wired exactly as the API's is, pointed at this container.
     /// </summary>
-    public ServiceProvider BuildServices() =>
-        new ServiceCollection()
-            .AddDbrPersistence(new ConfigurationBuilder()
-                .AddInMemoryCollection([new KeyValuePair<string, string?>(
+    /// <param name="settings">
+    /// Extra configuration, for tests that need something other than the defaults.
+    /// </param>
+    public ServiceProvider BuildServices(params KeyValuePair<string, string?>[] settings)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection([
+                new KeyValuePair<string, string?>(
                     $"ConnectionStrings:{InfrastructureServiceCollectionExtensions.CoreConnectionStringName}",
-                    ConnectionString)])
-                .Build())
+                    ConnectionString),
+                .. settings,
+            ])
+            .Build();
+
+        return new ServiceCollection()
+            .AddDbrPersistence(configuration)
+            .AddDbrPasskeys(configuration)
             .BuildServiceProvider();
+    }
 
     /// <summary>
     /// Opens a scope acting for <paramref name="tenantId"/>, or for no tenant at all
