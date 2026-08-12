@@ -150,10 +150,10 @@ a journal table and skipped — so bringing the stack up repeatedly costs nothin
 
 Entity Framework Core is the runtime O/RM here and **never owns the schema**. There are no EF
 migrations, and the design-time tooling that would generate them is referenced by no project, so
-`dotnet ef migrations add` is not a command this repository can run. The reasoning is §18 of the
-design spec; the short version is that row-level security policies, partial indexes, and
-extensions are raw SQL under EF's model anyway, at which point the C# wrapper stops paying for
-itself.
+`dotnet ef migrations add` is not a command this repository can run. Row-level security policies,
+partial indexes, and extensions all end up as raw SQL escape hatches under EF's migration model
+anyway — at which point the generated C# wrapper stops paying for itself, and the thing being
+reviewed may as well be the SQL that will actually run.
 
 Two sets, two journals:
 
@@ -214,9 +214,8 @@ with no `tenant_id` column rather than creating a policy that fails later at que
 time.
 
 > **Not a defence against arbitrary SQL.** The application connects with a role that
-> could `RESET ROLE`. This boundary is aimed squarely at the failure §4 names — a
-> missing filter in application code — and it makes that failure closed rather than
-> silent. A deployment wanting the stronger property should connect as a dedicated
+> could `RESET ROLE`. This boundary is aimed squarely at a missing tenant filter in
+> application code, and it makes that failure closed rather than silent. A deployment wanting the stronger property should connect as a dedicated
 > login role that is not a superuser; nothing here has to change for that to work.
 
 ## OpenBao, sealing, and the unseal key
@@ -351,9 +350,20 @@ verify with a restart test.
 
 ## Contributing
 
-Contributions are welcome. Two conventions worth knowing up front:
+Contributions are welcome. A few conventions worth knowing up front:
 
 - **Commits need a `Signed-off-by:` trailer** (DCO, `git commit -s`). There's no CLA.
+- **One branch per unit of work, merged with `--no-ff`.** Every piece of work gets its own branch
+  off `main` and comes back as a merge commit, even when it's a single commit's worth of change.
+  The merge commit is what makes the history navigable — `git log --first-parent main` reads as a
+  list of completed work rather than a stream of intermediate steps, and any one of them can be
+  undone on its own with `git revert -m 1 <merge>` without unpicking what landed after it. A
+  fast-forward merge loses both of those properties.
+- **Comments explain the reason, not where the reason is written down.** "We take this lock because
+  two workers can otherwise claim the same job" is useful to someone reading the code; "per the
+  design doc" is not, because it sends them somewhere they may not have and tells them nothing if
+  they don't go. Where a decision has a longer story behind it, the commit message is the place for
+  that — it stays attached to the change without cluttering the file.
 - **If your change affects how another developer runs this locally, update this README in the same
   PR.** New service, changed port, new required tool, new setup step, changed reset procedure — if
   someone with a fresh clone would hit it, it belongs here. A README that drifts from the compose

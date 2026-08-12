@@ -7,10 +7,10 @@ namespace Dbr.Infrastructure.Tenancy;
 /// Which tenant the current unit of work is acting for.
 /// </summary>
 /// <remarks>
-/// Scoped: an API request or a consumed message. §4 says this comes from a validated
-/// JWT claim, which is DBR-011's job — until then nothing populates it, and that is
-/// the safe direction to be incomplete in. An unset tenant reaches the database as
-/// "no tenant", and the policies match zero rows.
+/// Scoped to one API request or one consumed message. This will be populated from a
+/// validated JWT claim once authentication exists; until then nothing sets it, which
+/// is the safe direction to be incomplete in — an unset tenant reaches the database
+/// as "no tenant", and the row-level security policies match zero rows.
 /// </remarks>
 public interface ITenantContext
 {

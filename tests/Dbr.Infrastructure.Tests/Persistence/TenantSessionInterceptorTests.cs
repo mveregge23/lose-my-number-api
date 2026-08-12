@@ -8,8 +8,8 @@ namespace Dbr.Infrastructure.Tests.Persistence;
 
 /// <summary>
 /// The shape of what the interceptor sends. That it takes effect against a real
-/// Postgres — the isolation itself — is a database test, and belongs to the harness
-/// in DBR-085.
+/// Postgres — the isolation itself — is covered by the integration tests, which are
+/// the only place that property can actually be observed.
 /// </summary>
 public class TenantSessionInterceptorTests
 {
@@ -41,8 +41,8 @@ public class TenantSessionInterceptorTests
     public void The_session_setup_assumes_the_role_that_rls_applies_to()
     {
         // Without this the connection keeps acting as the owning role, which in this
-        // stack is a superuser holding BYPASSRLS — policies would exist and isolate
-        // nothing. Verified against a real Postgres before the design was settled.
+        // stack is a superuser holding BYPASSRLS — the policies would exist and
+        // isolate nothing at all.
         Assert.Contains(
             $"SET ROLE {TenantSessionInterceptor.ApplicationRole}",
             TenantSessionInterceptor.SessionSetupSql,

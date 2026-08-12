@@ -8,8 +8,7 @@ using DbUp.Engine.Output;
 namespace Dbr.Migrator;
 
 /// <summary>
-/// Applies the migration sets of §18.4. The only thing in this system that ever
-/// changes the schema.
+/// The only thing in this system that ever changes the database schema.
 /// </summary>
 public sealed class MigrationRunner(
     Assembly scriptAssembly,
@@ -77,12 +76,14 @@ public sealed class MigrationRunner(
         var upgrader = DeployChanges.To
             .PostgresqlDatabase(connectionString)
             .WithScriptsEmbeddedInAssembly(scriptAssembly, set.Owns)
-            // §18.3: Postgres DDL is transactional, and this is what turns that fact
-            // into the safety property the forward-only decision leans on — a script
-            // that fails midway leaves the schema exactly where it started rather
-            // than half-applied. Note for later: a CREATE INDEX CONCURRENTLY cannot
-            // run inside a transaction, so the first migration that wants one needs
-            // a deliberate exception here, not a quiet removal of this line.
+            // Not DbUp's default, and worth being explicit about: Postgres DDL is
+            // transactional, and this is what turns that into the property migrations
+            // are reviewed on the assumption of — a script failing halfway leaves the
+            // schema exactly where it started rather than half-applied. Without it,
+            // recovering from a partial migration is a manual job against production.
+            // Note for later: CREATE INDEX CONCURRENTLY cannot run inside a
+            // transaction, so the first migration wanting one needs a deliberate
+            // exception here, not a quiet removal of this line.
             .WithTransactionPerScript()
             // DbUp substitutes $token$ placeholders by default and throws on one it
             // has no value for. plpgsql dollar-quoting uses exactly that shape — a
@@ -100,8 +101,9 @@ public sealed class MigrationRunner(
         {
             log.LogError(
                 "Migration set '{0}' failed on {1}. The schema is unchanged — this script "
-                + "ran in a transaction and rolled back. Fix forward (§18.3): correct the "
-                + "script if it has never succeeded anywhere, otherwise add a new one.",
+                + "ran in a transaction and rolled back. Migrations are forward-only: "
+                + "correct the script if it has never succeeded anywhere, otherwise add a "
+                + "new one that fixes what it did.",
                 set.Name,
                 result.ErrorScript?.Name ?? "an unnamed script");
 

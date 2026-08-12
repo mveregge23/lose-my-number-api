@@ -7,22 +7,24 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 Plain SQL, applied by `Dbr.Migrator` (DbUp). EF Core is the runtime O/RM and never
 owns the schema — there are no EF migrations here, and the design-time tooling that
-would generate them is referenced by no project in the solution. See §18 of the
-design spec for why.
+would generate them is referenced by no project in the solution. Row-level security
+policies, partial indexes, and extensions all end up as raw SQL escape hatches under
+EF's migration model anyway, at which point the generated C# wrapper stops paying for
+itself and the thing being reviewed may as well be the SQL that will actually run.
 
 ## Layout
 
 ```
 db/migrations/
   core/     operational data — jobs, statuses, catalog, audit
-  vault/    the envelope-encrypted PII store (§1, §4)
+  vault/    the envelope-encrypted store holding personally identifying data
 ```
 
 Two folders, two DbUp journal tables (`public.schema_versions_core`,
-`public.schema_versions_vault`). The split mirrors §4's note that the vault "could
-start as a separate schema, promoted to a separate database/service later without an
-API shape change": each set has its own connection string, so that promotion is a
-connection-string change to one runner rather than an untangling of shared history.
+`public.schema_versions_vault`). The vault starts as a schema inside the core
+database but is expected to become its own database later; giving each set its own
+connection string now means that move is a configuration change to one runner rather
+than an untangling of shared history afterwards.
 
 ## Naming
 
@@ -39,7 +41,9 @@ filename that doesn't match.
 ## Rules
 
 - **Forward-only.** DbUp has no down-migrations and that is kept, not worked around
-  (§18.3). A mistake is corrected by a new script, not a reverse gear.
+  A trustworthy automated rollback is harder to build than the forward migration it
+  would undo — a `DROP COLUMN` "down" script cannot un-lose the data. A mistake is
+  corrected by a new script, not a reverse gear.
 - **Never edit a script that has been applied anywhere.** DbUp journals scripts by
   name; an edited script is simply never re-run, so the change silently reaches no
   database that already ran it. Add a new one.
@@ -47,10 +51,10 @@ filename that doesn't match.
   mid-script leaves the schema exactly where it started. `CREATE INDEX CONCURRENTLY`
   is the notable statement that cannot run this way and needs a deliberate exception
   in the runner rather than a quiet removal of the transaction.
-- **Reviewed as core code**, not at §12's lighter recipe bar — a bad recipe fails one
-  broker's jobs, a bad migration can corrupt the tenant boundary itself (§18.7).
+- **Reviewed as core code**, at a higher bar than broker recipes get — a bad recipe
+  fails one broker's jobs, a bad migration can corrupt the tenant boundary itself.
 - **No `pgcrypto` needed for `gen_random_uuid()`.** It has been core Postgres since
-  13, and the stack runs 17; §18.1's note predates that.
+  13, and the stack runs 17.
 
 ## Adding one
 

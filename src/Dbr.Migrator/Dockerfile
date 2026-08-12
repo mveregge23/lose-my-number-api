@@ -3,8 +3,8 @@
 
 # Build context is the repo root, so Directory.Build.props and db/migrations/ are
 # both reachable. The migration scripts are compiled into the assembly, so they have
-# to be present at build time — that is deliberate (§18.5): the image carries its own
-# migrations, and there is no mounted path that could disagree with the binary.
+# to be present at build time — deliberately, since it means the image carries its own
+# migrations and there is no mounted path that could disagree with the binary.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 

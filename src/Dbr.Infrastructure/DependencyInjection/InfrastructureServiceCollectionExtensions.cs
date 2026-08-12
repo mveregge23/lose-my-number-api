@@ -10,15 +10,16 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Dbr.Infrastructure.DependencyInjection;
 
 /// <summary>
-/// What a composition root (§2.1) calls to get the core persistence layer.
+/// What a composition root calls to get the core persistence layer.
 /// </summary>
 public static class InfrastructureServiceCollectionExtensions
 {
     /// <summary>
     /// Configuration key holding the core store's connection string. Set in compose
-    /// as <c>ConnectionStrings__Core</c>; the name is <c>Core</c> rather than
-    /// <c>Default</c> because §4 splits the vault into its own store, which will get
-    /// its own connection string — and, per §18.4, its own migration journal.
+    /// as <c>ConnectionStrings__Core</c>. The name is <c>Core</c> rather than
+    /// <c>Default</c> because the vault is a separate store with its own connection
+    /// string and its own migration journal; calling this one "default" would make
+    /// the other look like an exception to something.
     /// </summary>
     public const string CoreConnectionStringName = "Core";
 
@@ -57,8 +58,9 @@ public static class InfrastructureServiceCollectionExtensions
 
         // AddDbContext, not AddDbContextPool: pooling reuses context instances across
         // requests, and the interceptor below attaches per-request tenant state to the
-        // connection. Pooling that correctly is possible but is a sharp edge on the
-        // one boundary §4 says has to fail closed. Revisit under load, not before.
+        // connection. Pooling that correctly is possible, but it puts a sharp edge on
+        // the tenant boundary, where a mistake means one tenant reading another's
+        // rows. Revisit under measured load, not before.
         services.AddDbContext<DbrDbContext>((sp, options) => options
             .UseDbr(connectionString)
             .AddInterceptors(sp.GetRequiredService<TenantSessionInterceptor>()));

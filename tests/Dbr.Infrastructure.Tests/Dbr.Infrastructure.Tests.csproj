@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- TargetFramework / Nullable / ImplicitUsings come from Directory.Build.props. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <!-- xunit.v3 runs tests through Microsoft.Testing.Platform: each test project is
          a self-contained executable rather than something a separate VSTest host
-         discovers. That is what makes the per-project selective CI runs in §21.8
-         (DBR-089) and the nightly full suite (DBR-090) straightforward to drive. -->
+         discovers. That is what makes running one project at a time straightforward,
+         which CI needs in order to skip integration suites a change can't have
+         affected. -->
     <OutputType>Exe</OutputType>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>

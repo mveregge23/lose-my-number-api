@@ -15,7 +15,8 @@ COPY src/ src/
 RUN dotnet publish src/Dbr.Worker/Dbr.Worker.csproj -c Release -o /app --no-restore
 
 # The worker holds no listening port; the runtime-deps-free aspnet image is still
-# the right base once Playwright lands (DBR-040), which needs more than runtime-deps.
+# the right base once Playwright lands, since a headless browser needs more than
+# runtime-deps provides.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app ./
