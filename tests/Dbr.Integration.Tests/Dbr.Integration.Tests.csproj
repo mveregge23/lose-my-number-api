@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
+    <!-- The generic builder, for OpenBao: there is no first-party module for it. -->
+    <PackageReference Include="Testcontainers" Version="4.13.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Dbr.Infrastructure\Dbr.Infrastructure.csproj" />
+    <!-- The tests run the real migrator rather than a copy of what it does. Anything
+         else would be asserting against a second implementation of the schema, which
+         can agree with the tests while disagreeing with what production applies. -->
+    <ProjectReference Include="..\..\src\Dbr.Migrator\Dbr.Migrator.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

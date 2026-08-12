@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Dbr.Infrastructure.Tests/Dbr.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Dbr.Integration.Tests/Dbr.Integration.Tests.csproj" />
     <Project Path="tests/Dbr.Migrator.Tests/Dbr.Migrator.Tests.csproj" />
   </Folder>
 </Solution>
