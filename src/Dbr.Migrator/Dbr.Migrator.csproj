@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Dbr.Migrator</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DbUp and Npgsql, and nothing else (§18.5). No configuration-binding
+         packages either: the two connection strings are read straight from the
+         environment, which is how compose and a CI/CD pre-deploy step both supply
+         them anyway. Deliberately no reference to Dbr.Domain or Dbr.Infrastructure —
+         the thing that owns the schema must not be able to see the EF model, or
+         §18.6's drift test would be checking the model against itself. -->
+    <PackageReference Include="dbup-postgresql" Version="7.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The scripts live at /db/migrations per §18.4 (it is also the CODEOWNERS path
+         in §18.7) but are compiled into the assembly rather than read off disk, so
+         the binary carries its own migrations. That is what lets the identical
+         artifact run as a compose one-shot and as a hosted pre-deploy step without a
+         path to configure or a volume to mount, and it makes "the binary and the
+         scripts disagree" impossible rather than merely unlikely.
+
+         LogicalName flattens each script to "<set>.<filename>", which is both how
+         MigrationSet selects its own scripts and — since the filenames are
+         timestamp-prefixed — how DbUp's name ordering becomes chronological. -->
+    <EmbeddedResource Include="..\..\db\migrations\core\*.sql" LogicalName="core.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\db\migrations\vault\*.sql" LogicalName="vault.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

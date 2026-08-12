@@ -97,6 +97,29 @@ services:
       openbao:
         condition: service_healthy
 
+  # One-shot: applies db/migrations/core then db/migrations/vault and exits. The only
+  # thing in the system that ever changes the schema (§18.5). API and Worker gate on
+  # it completing successfully, so `docker compose up` migrates before either service
+  # accepts traffic and there is no manual step. A hosted deployment runs this same
+  # image once as a pre-deploy step instead — never on app boot, since replicas racing
+  # to migrate is exactly what the separate step avoids.
+  migrator:
+    build:
+      context: .
+      dockerfile: src/Dbr.Migrator/Dockerfile
+    restart: "no"
+    environment:
+      # Both stores point at the same database today; the vault is a schema within it.
+      # §4 anticipates promoting it to its own database later, and because it has its
+      # own connection string and its own journal, that promotion is this one line.
+      ConnectionStrings__Core: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-dbr};Username=${POSTGRES_USER:-dbr};Password=${POSTGRES_PASSWORD:-dbr_dev_password}
+      ConnectionStrings__Vault: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-dbr};Username=${POSTGRES_USER:-dbr};Password=${POSTGRES_PASSWORD:-dbr_dev_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -119,6 +142,8 @@ services:
         condition: service_healthy
       openbao-init:
         condition: service_completed_successfully
+      migrator:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -139,6 +164,8 @@ services:
       rabbitmq:
         condition: service_healthy
       openbao-init:
+        condition: service_completed_successfully
+      migrator:
         condition: service_completed_successfully
 
 volumes:

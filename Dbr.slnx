@@ -3,9 +3,11 @@
     <Project Path="src/Dbr.Api/Dbr.Api.csproj" />
     <Project Path="src/Dbr.Domain/Dbr.Domain.csproj" />
     <Project Path="src/Dbr.Infrastructure/Dbr.Infrastructure.csproj" />
+    <Project Path="src/Dbr.Migrator/Dbr.Migrator.csproj" />
     <Project Path="src/Dbr.Worker/Dbr.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Dbr.Infrastructure.Tests/Dbr.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Dbr.Migrator.Tests/Dbr.Migrator.Tests.csproj" />
   </Folder>
 </Solution>

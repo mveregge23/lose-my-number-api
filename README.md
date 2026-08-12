@@ -18,6 +18,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [What's running](#whats-running)
 - [Reaching the services from your machine](#reaching-the-services-from-your-machine)
 - [Data persistence](#data-persistence)
+- [Database migrations](#database-migrations)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
 - [Working on the code without Docker](#working-on-the-code-without-docker)
 - [Deployment modes](#deployment-modes)
@@ -78,9 +79,16 @@ laptop.
 | `rabbitmq` | `rabbitmq:4-management-alpine` | Job queue |
 | `openbao` | `openbao/openbao:2` | Key management — per-tenant envelope encryption |
 | `openbao-init` | `openbao/openbao:2` | One-shot: initializes/unseals OpenBao, then exits |
+| `migrator` | built from `src/Dbr.Migrator` | One-shot: applies database migrations, then exits |
 
-`openbao-init` exiting is normal and expected. `api` and `worker` wait for it to finish
-successfully before they start.
+`openbao-init` and `migrator` exiting is normal and expected — they are one-shot jobs, not
+services. `api` and `worker` wait for both to finish *successfully* before they start, so a
+failed migration stops the stack instead of letting the application run against a schema it
+doesn't match. If you see `api` and `worker` stuck in `Created`, read the `migrator` log first:
+
+```bash
+docker compose logs migrator
+```
 
 ### Why OpenBao and not HashiCorp Vault
 
@@ -132,6 +140,40 @@ To start completely fresh:
 ```bash
 docker compose down -v && rm -f .openbao/openbao-init.txt
 ```
+
+## Database migrations
+
+The schema is plain SQL under [`db/migrations/`](db/migrations/), applied by the `migrator`
+service on every `docker compose up`. It is idempotent — already-applied scripts are recorded in
+a journal table and skipped — so bringing the stack up repeatedly costs nothing.
+
+Entity Framework Core is the runtime O/RM here and **never owns the schema**. There are no EF
+migrations, and the design-time tooling that would generate them is referenced by no project, so
+`dotnet ef migrations add` is not a command this repository can run. The reasoning is §18 of the
+design spec; the short version is that row-level security policies, partial indexes, and
+extensions are raw SQL under EF's model anyway, at which point the C# wrapper stops paying for
+itself.
+
+Two sets, two journals:
+
+| Set | Scripts | Journal | Holds |
+|---|---|---|---|
+| core | `db/migrations/core/` | `public.schema_versions_core` | Operational data — jobs, statuses, catalog, audit |
+| vault | `db/migrations/vault/` | `public.schema_versions_vault` | The envelope-encrypted PII store |
+
+They point at the same database today, with the vault as a schema inside it. Each has its own
+connection string (`ConnectionStrings__Core`, `ConnectionStrings__Vault`), which is what keeps
+moving the vault to its own database later a configuration change rather than a rewrite.
+
+To add a migration, drop a `YYYYMMDD_HHMM__description.sql` file in the right folder — it is
+compiled into the migrator by a wildcard, so there is nothing to register. **Migrations are
+forward-only**, and a script that has already run anywhere must never be edited: the journal is
+keyed by filename, so an edit silently reaches no database that already applied it. Correct a
+mistake with a new script. See [`db/migrations/README.md`](db/migrations/README.md) for the full
+set of rules.
+
+Each script runs inside a transaction, and Postgres DDL is transactional, so a script that fails
+halfway leaves the schema exactly as it was — the migrator exits non-zero and nothing starts.
 
 ## OpenBao, sealing, and the unseal key
 
@@ -244,6 +286,17 @@ conflicting port in `.env`.
 **`openbao-init` exits non-zero saying the keyfile is missing** — the data volume holds an
 initialized barrel whose unseal key is gone, so the data can't be read. Run
 `docker compose down -v` to discard it and start clean.
+
+**`api` and `worker` never start, and sit in `Created`** — a one-shot job they depend on failed.
+`docker compose logs migrator` and `docker compose logs openbao-init` will say which. A failed
+migration leaves the schema untouched, so fixing the script and running `docker compose up`
+again is safe.
+
+**`Cannot load library libgssapi_krb5.so.2` in a service log** — harmless. Npgsql looks for the
+Kerberos library to see whether GSSAPI authentication is available; Microsoft's .NET runtime
+images don't ship it, and this stack authenticates with a password, so the probe fails once per
+process and everything proceeds normally. The library is deliberately not installed — it would
+add patch surface for a feature nothing here uses.
 
 **RabbitMQ or Postgres seems to have lost its data** — check you didn't run `docker compose down -v`
 or `docker volume prune -a`. Note that a volume being present is not proof state is being kept;
