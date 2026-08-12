@@ -21,9 +21,23 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          owning the schema by hand — a second naming implementation would be one more
          place for that drift to start. -->
     <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+    <!-- WebAuthn: the attestation and assertion verification behind passkeys. MIT,
+         and the only maintained .NET implementation of a specification whose whole
+         value is in the details of the checks — a hand-rolled version would be a
+         second implementation of exactly the cryptography this is trusting.
+
+         ASP.NET Core Identity is deliberately not here, despite being the obvious
+         partner for it. Identity brings its own EF-owned schema and its own user
+         table, and this codebase already has a tenant table and a schema owned by
+         hand-written SQL; taking Identity would mean either two sources of truth for
+         who an account is, or fighting its store abstractions to point at one. -->
+    <PackageReference Include="Fido2" Version="4.0.1" />
     <!-- Only the abstraction, so this layer reads configuration but never owns a
-         provider chain: the composition roots decide where settings come from. -->
+         provider chain: the composition roots decide where settings come from. The
+         binder is the reading half of that, not a provider — it turns a section this
+         layer was handed into an options object. -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.4" />
   </ItemGroup>
 
   <ItemGroup>

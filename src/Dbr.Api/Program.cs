@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Api.Endpoints;
 using Dbr.Infrastructure.DependencyInjection;
 
 // The self-hosted composition root. The hosted build differs only in which
@@ -10,9 +11,11 @@ using Dbr.Infrastructure.DependencyInjection;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbrPersistence(builder.Configuration);
+builder.Services.AddDbrPasskeys(builder.Configuration);
 
 var app = builder.Build();
 
 app.MapGet("/", () => "Hello World!");
+app.MapAuthEndpoints();
 
 app.Run();

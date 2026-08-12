@@ -21,7 +21,7 @@ public class MigrationTests(PostgresFixture postgres)
     [Fact]
     public async Task Both_sets_journal_what_they_applied()
     {
-        Assert.Equal(3, await postgres.QueryAsOwnerAsync<long>(
+        Assert.Equal(5, await postgres.QueryAsOwnerAsync<long>(
             $"SELECT count(*) FROM public.{MigrationSet.Core.JournalTable}"));
 
         Assert.Equal(1, await postgres.QueryAsOwnerAsync<long>(
@@ -150,6 +150,50 @@ public class MigrationTests(PostgresFixture postgres)
             + "filter, so the application asks for every tenant's rows and only the database "
             + "declines. Implement ITenantScoped, or filter explicitly if the entity is scoped by "
             + "something other than a tenant_id: " + string.Join(", ", unfiltered));
+    }
+
+    [Fact]
+    public async Task Every_entity_that_belongs_to_a_tenant_sits_on_a_table_that_enforces_it()
+    {
+        // The other direction, and the dangerous one. Above, the database holds the
+        // line while the application forgets to ask narrowly. Here the application
+        // asks narrowly and nothing holds the line — so the day a query is written
+        // without the filter, or reaches the database by some path the filter does not
+        // cover, there is no second answer. It reads as protected in the C# and is not
+        // protected anywhere.
+        //
+        // Tables genuinely shared across tenants are outside this by not implementing
+        // ITenantScoped, which is a decision visible on the entity rather than an
+        // omission in a migration.
+        using var scope = postgres.BuildServices().CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<DbrDbContext>();
+
+        var unprotected = new List<string>();
+
+        foreach (var entityType in context.Model.GetEntityTypes())
+        {
+            if (entityType.GetTableName() is not { } tableName
+                || entityType.IsOwned()
+                || !typeof(Dbr.Domain.Tenancy.ITenantScoped).IsAssignableFrom(entityType.ClrType))
+            {
+                continue;
+            }
+
+            var isProtected = await postgres.QueryAsOwnerAsync<bool>(
+                $"SELECT coalesce((SELECT relrowsecurity FROM pg_class WHERE relname = '{tableName}'), false)");
+
+            if (!isProtected)
+            {
+                unprotected.Add($"{entityType.ClrType.Name} -> {tableName}");
+            }
+        }
+
+        Assert.True(
+            unprotected.Count == 0,
+            "These entities declare that they belong to a tenant, but their tables have no "
+            + "row-level security — so the only thing keeping one account's rows out of another's "
+            + "is the application remembering to filter. Add a CALL app.enable_tenant_rls to the "
+            + "migration: " + string.Join(", ", unprotected));
     }
 
     private sealed class ThrowawayLog : IUpgradeLog
