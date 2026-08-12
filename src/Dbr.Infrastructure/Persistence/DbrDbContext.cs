@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using System.Reflection;
+using Dbr.Domain.Identity;
 using Dbr.Domain.Tenancy;
 using Dbr.Infrastructure.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -60,6 +61,12 @@ public class DbrDbContext(DbContextOptions options, ITenantContext tenantContext
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DbrDbContext).Assembly);
 
         ApplyTenantQueryFilters(modelBuilder);
+
+        // The tenant itself cannot go through the convention above: it has no
+        // TenantId to compare, because the tenant this row belongs to is the one it
+        // is. Its table's row-level security policy is created over the same column,
+        // so the two halves agree.
+        modelBuilder.Entity<Tenant>().HasQueryFilter(tenant => tenant.Id == CurrentTenantId);
     }
 
     /// <summary>

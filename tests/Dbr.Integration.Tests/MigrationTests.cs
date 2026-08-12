@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Infrastructure.Persistence;
 using Dbr.Integration.Tests.Fixtures;
 using Dbr.Migrator;
 using DbUp.Engine.Output;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Dbr.Integration.Tests;
 
@@ -18,7 +21,7 @@ public class MigrationTests(PostgresFixture postgres)
     [Fact]
     public async Task Both_sets_journal_what_they_applied()
     {
-        Assert.Equal(1, await postgres.QueryAsOwnerAsync<long>(
+        Assert.Equal(3, await postgres.QueryAsOwnerAsync<long>(
             $"SELECT count(*) FROM public.{MigrationSet.Core.JournalTable}"));
 
         Assert.Equal(1, await postgres.QueryAsOwnerAsync<long>(
@@ -109,6 +112,44 @@ public class MigrationTests(PostgresFixture postgres)
         {
             await postgres.ExecuteAsOwnerAsync($"DROP TABLE IF EXISTS public.{table};");
         }
+    }
+
+    [Fact]
+    public async Task Every_table_with_row_level_security_has_an_entity_that_filters()
+    {
+        // The mismatch this catches is silent in both directions and invisible in
+        // review: a migration opts a table into the boundary, the entity mapped to it
+        // never implements ITenantScoped, and the application's own queries stop
+        // narrowing. Row-level security still holds, so nothing breaks and nothing
+        // says so — until a connection reaches the database as the wrong role and the
+        // defence in depth that should have covered it was never there.
+        using var scope = postgres.BuildServices().CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<DbrDbContext>();
+
+        var unfiltered = new List<string>();
+
+        foreach (var entityType in context.Model.GetEntityTypes())
+        {
+            if (entityType.GetTableName() is not { } tableName || entityType.IsOwned())
+            {
+                continue;
+            }
+
+            var isProtected = await postgres.QueryAsOwnerAsync<bool>(
+                $"SELECT coalesce((SELECT relrowsecurity FROM pg_class WHERE relname = '{tableName}'), false)");
+
+            if (isProtected && entityType.GetDeclaredQueryFilters().Count == 0)
+            {
+                unfiltered.Add($"{entityType.ClrType.Name} -> {tableName}");
+            }
+        }
+
+        Assert.True(
+            unfiltered.Count == 0,
+            "These tables are protected by row-level security but their entities have no query "
+            + "filter, so the application asks for every tenant's rows and only the database "
+            + "declines. Implement ITenantScoped, or filter explicitly if the entity is scoped by "
+            + "something other than a tenant_id: " + string.Join(", ", unfiltered));
     }
 
     private sealed class ThrowawayLog : IUpgradeLog
