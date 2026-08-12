@@ -1,7 +1,18 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- EF1002 warns that raw SQL built from an interpolated string is an injection
+         risk. Every raw query in this project interpolates a table name, and a table
+         name cannot be a parameter — so the alternative is not a safer query, it is no
+         query. The interpolated values are literals and Guids these tests generate
+         themselves; nothing here comes from outside the test. Scoped to this project
+         so the warning still bites anywhere the input might not be ours. -->
+    <NoWarn>$(NoWarn);EF1002</NoWarn>
     <OutputType>Exe</OutputType>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>

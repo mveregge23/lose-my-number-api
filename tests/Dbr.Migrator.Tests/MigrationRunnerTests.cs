@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using System.Reflection;
-using DbUp.Engine.Output;
 using Dbr.Migrator;
+using DbUp.Engine.Output;
 
 namespace Dbr.Migrator.Tests;
 

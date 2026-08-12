@@ -51,7 +51,8 @@ public class KeyManagementHarnessTests(OpenBaoFixture openBao)
 
         var response = await openBao.Client.PostAsJsonAsync(
             $"/v1/transit/decrypt/{bob}",
-            new { ciphertext });
+            new { ciphertext },
+            TestContext.Current.CancellationToken);
 
         Assert.False(response.IsSuccessStatusCode);
     }

@@ -75,7 +75,9 @@ public class TenantQueryFilterTests(PostgresFixture postgres) : IAsyncLifetime
     {
         using var context = ContextFor(Alice);
 
-        var notes = await context.Set<FilterProbe>().Select(p => p.Note).ToListAsync();
+        var notes = await context.Set<FilterProbe>()
+            .Select(p => p.Note)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(["alice note"], notes);
     }
@@ -93,7 +95,7 @@ public class TenantQueryFilterTests(PostgresFixture postgres) : IAsyncLifetime
             .IgnoreQueryFilters()
             .Select(p => p.Note)
             .OrderBy(note => note)
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(["alice note", "bob note"], notes);
     }
@@ -105,7 +107,7 @@ public class TenantQueryFilterTests(PostgresFixture postgres) : IAsyncLifetime
         // compares against NULL, which is never true.
         using var context = ContextFor(null);
 
-        Assert.Empty(await context.Set<FilterProbe>().ToListAsync());
+        Assert.Empty(await context.Set<FilterProbe>().ToListAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -117,7 +119,7 @@ public class TenantQueryFilterTests(PostgresFixture postgres) : IAsyncLifetime
 
         var notes = await context.Set<FilterProbe>()
             .Where(p => p.TenantId == Bob)
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(notes);
     }
@@ -132,8 +134,12 @@ public class TenantQueryFilterTests(PostgresFixture postgres) : IAsyncLifetime
         using var alice = ContextFor(Alice);
         using var bob = ContextFor(Bob);
 
-        Assert.Equal(["alice note"], await alice.Set<FilterProbe>().Select(p => p.Note).ToListAsync());
-        Assert.Equal(["bob note"], await bob.Set<FilterProbe>().Select(p => p.Note).ToListAsync());
+        Assert.Equal(
+            ["alice note"],
+            await alice.Set<FilterProbe>().Select(p => p.Note).ToListAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(
+            ["bob note"],
+            await bob.Set<FilterProbe>().Select(p => p.Note).ToListAsync(TestContext.Current.CancellationToken));
     }
 
     private FilterProbeContext ContextFor(Guid? tenantId)

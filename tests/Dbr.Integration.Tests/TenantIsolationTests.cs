@@ -68,7 +68,7 @@ public class TenantIsolationTests(PostgresFixture postgres) : IAsyncLifetime
 
         var leaked = await context.Database
             .SqlQueryRaw<string>($"SELECT note AS \"Value\" FROM public.{_table} WHERE tenant_id = '{Bob}'")
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(leaked);
     }
@@ -81,7 +81,8 @@ public class TenantIsolationTests(PostgresFixture postgres) : IAsyncLifetime
 
         var exception = await Assert.ThrowsAsync<PostgresException>(() => context.Database
             .ExecuteSqlRawAsync(
-                $"INSERT INTO public.{_table} (tenant_id, note) VALUES ('{Bob}', 'forged')"));
+                $"INSERT INTO public.{_table} (tenant_id, note) VALUES ('{Bob}', 'forged')",
+                TestContext.Current.CancellationToken));
 
         // Without WITH CHECK on the policy this would succeed, and isolation would be
         // read-only: Alice could write into a tenant she cannot read from.
@@ -96,7 +97,9 @@ public class TenantIsolationTests(PostgresFixture postgres) : IAsyncLifetime
         var context = scope.ServiceProvider.GetRequiredService<DbrDbContext>();
 
         await Assert.ThrowsAsync<PostgresException>(() => context.Database
-            .ExecuteSqlRawAsync($"UPDATE public.{_table} SET tenant_id = '{Bob}'"));
+            .ExecuteSqlRawAsync(
+                $"UPDATE public.{_table} SET tenant_id = '{Bob}'",
+                TestContext.Current.CancellationToken));
 
         Assert.Equal(1, await RowCountAsOwnerAsync(Alice));
     }
@@ -109,7 +112,9 @@ public class TenantIsolationTests(PostgresFixture postgres) : IAsyncLifetime
 
         // No error here, and that is correct: the rows are invisible, so there is
         // nothing to refuse. What matters is that Bob's row is still there after.
-        var affected = await context.Database.ExecuteSqlRawAsync($"DELETE FROM public.{_table}");
+        var affected = await context.Database.ExecuteSqlRawAsync(
+            $"DELETE FROM public.{_table}",
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(1, affected);
         Assert.Equal(1, await RowCountAsOwnerAsync(Bob));
@@ -142,14 +147,14 @@ public class TenantIsolationTests(PostgresFixture postgres) : IAsyncLifetime
 
         var role = await context.Database
             .SqlQueryRaw<string>("SELECT current_user AS \"Value\"")
-            .SingleAsync();
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(TenantSessionInterceptor.ApplicationRole, role);
 
         var bypassesRls = await context.Database
             .SqlQueryRaw<bool>(
                 "SELECT (rolsuper OR rolbypassrls) AS \"Value\" FROM pg_roles WHERE rolname = current_user")
-            .SingleAsync();
+            .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.False(bypassesRls);
     }
@@ -161,7 +166,7 @@ public class TenantIsolationTests(PostgresFixture postgres) : IAsyncLifetime
 
         return await context.Database
             .SqlQueryRaw<string>($"SELECT note AS \"Value\" FROM public.{_table} ORDER BY note")
-            .ToListAsync();
+            .ToListAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task<int> RowCountAsOwnerAsync(Guid? tenantId = null)
