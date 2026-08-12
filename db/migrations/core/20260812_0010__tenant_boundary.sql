@@ -1,18 +1,19 @@
 -- SPDX-FileCopyrightText: 2026 Max Veregge
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 --
--- The tenant boundary (§4): the machinery, before there is a tenant-scoped table to
--- apply it to. Every such table from DBR-008 onward opts in with a single
+-- The tenant boundary: the machinery, before there is a tenant-scoped table to apply
+-- it to. Every such table opts in with a single
 -- `CALL app.enable_tenant_rls('public.<table>')`.
 --
--- Why this is more than a policy definition. §4 asks for RLS to be "the real tenant
--- boundary, not just an EF Core .Where(tenantId) convention", so that "a missing
--- filter in application code fails closed instead of leaking rows". Postgres will not
--- give you that for free: RLS is skipped entirely for a superuser, for any role
--- holding BYPASSRLS, and — unless the table is FORCEd — for the table's own owner.
--- The role this stack connects as is all three at once. Enabling a policy and
--- stopping there would have produced a boundary that reads correctly in the schema,
--- passes a casual look, and isolates nothing.
+-- The goal is that a query which forgets its tenant filter returns nothing rather
+-- than someone else's rows — enforced by the database, so that a mistake in
+-- application code fails closed instead of leaking.
+--
+-- Postgres will not give you that for free. Row-level security is skipped entirely
+-- for a superuser, for any role holding BYPASSRLS, and — unless the table is FORCEd —
+-- for the table's own owner. The role this stack connects as is all three at once, so
+-- enabling a policy and stopping there produces a boundary that reads correctly in
+-- the schema, passes a casual look, and isolates nothing.
 
 -- ---------------------------------------------------------------------------------
 -- 1. Where the current tenant lives
@@ -21,8 +22,8 @@
 CREATE SCHEMA IF NOT EXISTS app;
 
 COMMENT ON SCHEMA app IS
-    'Machinery for the tenant boundary of §4 — the current-tenant accessor and the '
-    'procedure tables use to opt into row-level security. No application data.';
+    'Machinery for the tenant boundary: the current-tenant accessor and the procedure '
+    'tables use to opt into row-level security. No application data.';
 
 -- Set per connection by TenantSessionInterceptor, read by every tenant policy.
 --
@@ -47,7 +48,7 @@ $$;
 
 COMMENT ON FUNCTION app.current_tenant_id() IS
     'The tenant this connection is acting for, or NULL when none was set. NULL makes '
-    'every tenant policy match zero rows (§4, fail closed).';
+    'every tenant policy match zero rows, so an unidentified connection sees nothing.';
 
 -- ---------------------------------------------------------------------------------
 -- 2. A role that RLS actually applies to
@@ -74,7 +75,8 @@ $$;
 
 COMMENT ON ROLE dbr_app IS
     'The role the application acts as (via SET ROLE) so row-level security applies to '
-    'it. Deliberately NOSUPERUSER/NOBYPASSRLS/NOLOGIN — see §4.';
+    'it. Deliberately NOSUPERUSER/NOBYPASSRLS, and NOLOGIN because it is reached over '
+    'an existing connection rather than by authenticating.';
 
 GRANT USAGE ON SCHEMA app TO dbr_app;
 GRANT EXECUTE ON FUNCTION app.current_tenant_id() TO dbr_app;
@@ -85,8 +87,8 @@ GRANT USAGE ON SCHEMA public TO dbr_app;
 -- ---------------------------------------------------------------------------------
 
 -- One call per tenant-scoped table, from that table's own migration. Centralised so
--- the thirteen tables of §3 cannot each get the policy subtly different, and so a
--- table cannot be given a policy while quietly missing FORCE.
+-- that a dozen-odd tables cannot each get the policy subtly different, and so a table
+-- cannot be given a policy while quietly missing FORCE.
 CREATE OR REPLACE PROCEDURE app.enable_tenant_rls(target_table regclass)
     LANGUAGE plpgsql
 AS $$
@@ -101,15 +103,15 @@ BEGIN
     ) THEN
         RAISE EXCEPTION
             'app.enable_tenant_rls: % has no tenant_id column. Tenant-scoped tables '
-            'carry tenant_id uuid NOT NULL; broker_health is the one table in §3 that '
-            'is deliberately outside this boundary and must not call this.',
+            'carry tenant_id uuid NOT NULL. Tables holding data shared across tenants '
+            'sit outside this boundary and must not call this.',
             target_table;
     END IF;
 
     EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY', target_table);
 
     -- FORCE covers the case the ENABLE above misses: the table's own owner. Belt and
-    -- braces next to the dbr_app role — a deployment that points the application at
+    -- braces next to the dbr_app role, so a deployment that points the application at
     -- the owning role still isolates.
     EXECUTE format('ALTER TABLE %s FORCE ROW LEVEL SECURITY', target_table);
 
@@ -127,5 +129,6 @@ END
 $$;
 
 COMMENT ON PROCEDURE app.enable_tenant_rls(regclass) IS
-    'Opt a tenant-scoped table into the §4 boundary: enable + force RLS, create the '
-    'tenant_isolation policy over app.current_tenant_id(), and grant the app role DML.';
+    'Opt a tenant-scoped table into the tenant boundary: enable and force row-level '
+    'security, create the tenant_isolation policy over app.current_tenant_id(), and '
+    'grant the application role its DML.';

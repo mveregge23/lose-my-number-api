@@ -7,9 +7,9 @@ using Dbr.Migrator;
 
 // One-shot. Self-hosted, this is the compose service the API and Worker gate on with
 // `service_completed_successfully`; hosted, the identical binary is an explicit
-// pre-deploy step run exactly once (§18.5) — deliberately not something either
-// application does at boot, since replicas racing to migrate is the failure mode the
-// separate step exists to avoid.
+// pre-deploy step run exactly once. Deliberately not something either application
+// does at boot: a deployment running several replicas would have them all race to
+// migrate the same database at once, which a separate step avoids entirely.
 var runner = new MigrationRunner(
     Assembly.GetExecutingAssembly(),
     Environment.GetEnvironmentVariable,

@@ -13,14 +13,14 @@ namespace Dbr.Infrastructure.Tests.Persistence;
 /// </summary>
 /// <remarks>
 /// EF derives a table name from the <c>DbSet</c> property when there is one, so
-/// adding <c>DbSet&lt;Tenant&gt; Tenants</c> silently retargets the entity at a
-/// <c>tenants</c> table while the migration of §18.4 created <c>tenant</c>. Nothing
-/// about that is visible at the call site. The §18.6 drift test (DBR-069) catches it
-/// too, but only against a real database — this catches it in the unit tier, which
-/// is where the mistake gets made.
+/// adding <c>DbSet&lt;Tenant&gt; Tenants</c> silently points the entity at a
+/// <c>tenants</c> table while the migration created <c>tenant</c>. Nothing about that
+/// is visible at the call site. The schema-drift test catches it too, but only
+/// against a real database — this catches it in the unit tier, which is where the
+/// mistake gets made.
 /// <para>
-/// Vacuous until the first entity lands in DBR-008: <see cref="DbrDbContext"/> has no
-/// entities yet, and the fence is deliberately built before the field it encloses.
+/// Vacuous until the first entity exists: <see cref="DbrDbContext"/> has none yet,
+/// and the fence is deliberately built before the field it encloses.
 /// </para>
 /// </remarks>
 public partial class DbrDbContextModelTests

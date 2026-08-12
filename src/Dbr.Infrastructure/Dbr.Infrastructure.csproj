@@ -5,14 +5,17 @@
          it is deliberately not pinned separately so the two can never skew.
 
          Microsoft.EntityFrameworkCore.Design / .Tools are deliberately absent from
-         this project and from every project that references it. §18.6: the schema is
-         owned by DbUp (DBR-066), and leaving the design-time package out removes
-         `dotnet ef migrations add` from the set of commands that can even be run
-         here, rather than relying on people not running it. -->
+         this project and from every project that references it. The schema is owned
+         by hand-written SQL under /db/migrations, and leaving the design-time package
+         out is what removes `dotnet ef migrations add` from the set of commands that
+         can be run at all — rather than relying on people not running it. -->
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-    <!-- snake_case identifiers, so the EF model and the hand-written SQL of §18
-         describe the same names without quoting either side. See the DBR-003
-         decision entry for why this is a package and not thirty lines in-repo. -->
+    <!-- snake_case identifiers, so the EF model and the hand-written SQL describe
+         the same names without quoting either side. A package rather than a
+         hand-rolled rewriter: this one also renames keys, indexes and check
+         constraints consistently, and model/SQL drift is already the standing cost of
+         owning the schema by hand — a second naming implementation would be one more
+         place for that drift to start. -->
     <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
     <!-- Only the abstraction, so this layer reads configuration but never owns a
          provider chain: the composition roots decide where settings come from. -->
@@ -25,8 +28,8 @@
 
   <ItemGroup>
     <!-- The exact SQL the tenant interceptor sends is an implementation detail to
-         callers but the thing worth asserting in a test, since §4's boundary depends
-         on its precise shape. -->
+         callers, but its precise shape is what the tenant boundary depends on, so it
+         is worth asserting in a test. -->
     <InternalsVisibleTo Include="Dbr.Infrastructure.Tests" />
   </ItemGroup>
 

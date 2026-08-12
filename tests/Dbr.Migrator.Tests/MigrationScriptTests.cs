@@ -20,7 +20,7 @@ public partial class MigrationScriptTests
 {
     private static readonly Assembly Migrator = typeof(MigrationSet).Assembly;
 
-    /// <summary><c>&lt;set&gt;.YYYYMMDD_HHMM__short_description.sql</c>, per §18.4.</summary>
+    /// <summary><c>&lt;set&gt;.YYYYMMDD_HHMM__short_description.sql</c>.</summary>
     [GeneratedRegex(@"^(core|vault)\.[0-9]{8}_[0-9]{4}__[a-z0-9_]+\.sql$")]
     private static partial Regex ScriptName();
 
@@ -78,8 +78,8 @@ public partial class MigrationScriptTests
     [Fact]
     public void The_two_sets_journal_separately()
     {
-        // §18.4's whole reason for two sets: promoting the vault to its own database
-        // must stay a connection-string change, which it isn't if they share a journal.
+        // The whole reason for two sets: moving the vault to its own database has to
+        // stay a connection-string change, which it isn't if they share a journal.
         Assert.NotEqual(MigrationSet.Core.JournalTable, MigrationSet.Vault.JournalTable);
         Assert.NotEqual(
             MigrationSet.Core.ConnectionStringVariable,

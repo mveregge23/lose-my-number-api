@@ -8,8 +8,8 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 namespace Dbr.Infrastructure.Persistence;
 
 /// <summary>
-/// Puts every connection into the tenant boundary of §4 as soon as it opens: acting
-/// as a role that row-level security applies to, and carrying the current tenant.
+/// Puts every connection into the tenant boundary as soon as it opens: acting as a
+/// role that row-level security applies to, and carrying the current tenant.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,7 +30,7 @@ public sealed class TenantSessionInterceptor(ITenantContext tenantContext) : DbC
 {
     /// <summary>
     /// The role the application acts as. Created by the tenant-boundary migration as
-    /// NOLOGIN/NOSUPERUSER/NOBYPASSRLS; reached by <c>SET ROLE</c> rather than by
+    /// NOLOGIN/NOSUPERUSER/NOBYPASSRLS, and reached by <c>SET ROLE</c> rather than by
     /// authenticating, so no second credential has to be provisioned or rotated.
     /// </summary>
     /// <remarks>
@@ -40,7 +40,7 @@ public sealed class TenantSessionInterceptor(ITenantContext tenantContext) : DbC
     /// </remarks>
     public const string ApplicationRole = "dbr_app";
 
-    /// <summary>The setting every tenant policy reads (§4).</summary>
+    /// <summary>The setting every tenant policy reads.</summary>
     public const string TenantSetting = "app.tenant_id";
 
     /// <summary>

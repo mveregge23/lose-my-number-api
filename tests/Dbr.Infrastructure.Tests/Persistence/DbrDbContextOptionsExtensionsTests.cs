@@ -9,9 +9,9 @@ namespace Dbr.Infrastructure.Tests.Persistence;
 
 /// <summary>
 /// These build a model rather than a connection — nothing here touches a database.
-/// The point is the mapping conventions: §18 puts the schema in hand-written SQL, so
-/// the names EF expects have to match the names those scripts create, and that
-/// agreement is worth a test that fails the moment the convention changes.
+/// The point is the mapping conventions: the schema is hand-written SQL, so the names
+/// EF expects have to match the names those scripts create, and that agreement is
+/// worth a test that fails the moment the convention changes.
 /// </summary>
 public class DbrDbContextOptionsExtensionsTests
 {
@@ -36,7 +36,8 @@ public class DbrDbContextOptionsExtensionsTests
         var storeObject = StoreObjectIdentifier.Create(entityType, StoreObjectType.Table)!.Value;
 
         // The interesting case is a multi-word name: `TenantId` has to become
-        // `tenant_id`, because that is what the RLS policies in §4 will reference.
+        // `tenant_id`, because that is the column the row-level security policies
+        // compare against.
         Assert.Equal(
             "tenant_id",
             entityType.FindProperty(nameof(RemovalJobProbe.TenantId))!.GetColumnName(storeObject));
@@ -56,9 +57,9 @@ public class DbrDbContextOptionsExtensionsTests
             .Options);
 
     /// <summary>
-    /// A stand-in for the entities that arrive from DBR-008 onward. It lives in the
-    /// test project on purpose: the real <see cref="DbrDbContext"/> has no entities
-    /// yet, and this asserts the convention rather than any one entity.
+    /// A stand-in for the entities to come. It lives in the test project on purpose:
+    /// the real <see cref="DbrDbContext"/> has no entities yet, and this asserts the
+    /// convention rather than any one entity.
     /// </summary>
     private sealed class NamingProbeDbContext(DbContextOptions<NamingProbeDbContext> options)
         : DbContext(options)

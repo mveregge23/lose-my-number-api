@@ -14,8 +14,8 @@ public class TenantContextTests
     public void Starts_with_no_tenant()
     {
         // The safe direction to be incomplete in: nothing populates this until
-        // DBR-011 validates a JWT, and until then queries see nothing rather than
-        // everything.
+        // there is a validated JWT to populate it from, and until then queries see
+        // nothing rather than everything.
         Assert.Null(new TenantContext().TenantId);
     }
 

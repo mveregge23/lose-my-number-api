@@ -6,14 +6,14 @@ using System.Reflection;
 namespace Dbr.Migrator;
 
 /// <summary>
-/// One of the two migration sets of §18.4 — the core store and the vault store.
+/// One of the two migration sets — the core store and the vault store.
 /// </summary>
 /// <remarks>
-/// They are separate because §4 describes the vault as a store that "could start as a
-/// separate schema, promoted to a separate database/service later without an API
-/// shape change". Each set therefore has its own connection string and its own DbUp
-/// journal table, so promoting the vault later is a connection-string change to one
-/// set rather than an exercise in untangling a shared migration history.
+/// They are separate because the vault starts as a schema inside the core database
+/// but is expected to become its own database later. Each set therefore has its own
+/// connection string and its own DbUp journal table, so making that move is a
+/// connection-string change to one set rather than an exercise in untangling a
+/// shared migration history after the fact.
 /// </remarks>
 /// <param name="Name">Set name, and the prefix its embedded scripts carry.</param>
 /// <param name="ConnectionStringVariable">Environment variable holding its connection string.</param>
@@ -27,8 +27,8 @@ public sealed record MigrationSet(string Name, string ConnectionStringVariable, 
         new("core", "ConnectionStrings__Core", "schema_versions_core");
 
     /// <summary>
-    /// The envelope-encrypted PII store (§1, §4). A schema today, its own database
-    /// later; either way it keeps its own journal.
+    /// The envelope-encrypted store holding personally identifying data. A schema
+    /// today, its own database later; either way it keeps its own journal.
     /// </summary>
     public static readonly MigrationSet Vault =
         new("vault", "ConnectionStrings__Vault", "schema_versions_vault");
@@ -46,7 +46,8 @@ public sealed record MigrationSet(string Name, string ConnectionStringVariable, 
 
     /// <summary>
     /// This set's scripts, in the order they will be applied. Filenames are
-    /// timestamp-prefixed (§18.4), so ordinal name order is chronological order.
+    /// timestamp-prefixed and fixed-width, so ordinal name order is chronological
+    /// order.
     /// </summary>
     public IReadOnlyList<string> ScriptNames(Assembly assembly) =>
         [.. assembly.GetManifestResourceNames()

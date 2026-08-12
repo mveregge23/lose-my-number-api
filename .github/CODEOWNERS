@@ -1,4 +1,4 @@
-# Review tiers per §12.5 (catalog trust tiers) and §18.7 (migrations).
+# Review tiers: how much scrutiny a change needs depends on how much it can break.
 #
 # GitHub enforces "N required approvals" repo-wide via branch protection,
 # not per-path — the two-tier split below only becomes real once a second
@@ -10,12 +10,16 @@
 # Default owner
 *                       @mveregge23
 
-# Broker recipes — data, not code — 1 maintainer approval (§9.1, §12.5)
+# Broker recipes — data, not code. A bad one fails a single broker's jobs, so one
+# maintainer approval is enough.
 /catalog/brokers/       @mveregge23
 
-# Custom connectors and legal-basis content — 2 maintainer/counsel approvals (§12.5)
+# Custom connectors run real code against third-party sites, and legal-basis content
+# encodes statutory deadlines and request wording. Two approvals, one of which should
+# be counsel for the legal content.
 /catalog/connectors/    @mveregge23
 /catalog/legal-basis/   @mveregge23
 
-# Database migrations — same two-approval tier as connectors/legal-basis (§18.7)
+# Database migrations. Same two-approval bar: a bad migration can corrupt the tenant
+# boundary itself, and there is no down-migration to undo it with.
 /db/migrations/         @mveregge23

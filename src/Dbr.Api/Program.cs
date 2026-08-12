@@ -3,8 +3,10 @@
 
 using Dbr.Infrastructure.DependencyInjection;
 
-// The self-hosted composition root (§2.1). The hosted one differs only in which
-// implementations get registered here — never in the domain model or the pipeline.
+// The self-hosted composition root. The hosted build differs only in which
+// implementations get registered here — never in the domain model or the pipeline,
+// so a feature can't quietly become available in one deployment mode and not the
+// other without someone editing this file.
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbrPersistence(builder.Configuration);

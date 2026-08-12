@@ -21,8 +21,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app ./
 
-# Never run the API as root — a connector-adjacent process should hold as little
-# ambient authority as the image can give it.
+# Never run the API as root. This process ends up adjacent to code that talks to
+# untrusted third-party sites, so it should hold as little ambient authority as the
+# image can give it.
 USER $APP_UID
 
 ENV ASPNETCORE_HTTP_PORTS=8080

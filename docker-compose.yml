@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Max Veregge
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# The whole self-host story (§2, §8): `docker compose up`, no cloud account.
+# The whole self-host story: `docker compose up`, no cloud account.
 # Every backing service here is open source — Postgres, RabbitMQ, and OpenBao
-# (the MPL-2.0 Linux Foundation fork of Vault; see the DBR-002 decision entry).
+# (OpenBao is the MPL-2.0 Linux Foundation fork of Vault, which relicensed away from
+# open source at v1.15).
 #
 # Credentials below come from .env and default to dev-only values. They are fine
 # for a laptop and NOT fine for anything reachable from a network — a real
@@ -79,8 +80,8 @@ services:
       start_period: 5s
 
   # One-shot: initializes the barrel on first run, unseals it on every run, and
-  # ensures Transit and the well-known local token exist. Same shape as the
-  # migrator gate in §18.5 — the API and Worker wait for it to exit 0.
+  # ensures Transit and the well-known local token exist. Same shape as the migrator
+  # below — the API and Worker wait for it to exit 0.
   openbao-init:
     image: openbao/openbao:2
     restart: "no"
@@ -98,11 +99,11 @@ services:
         condition: service_healthy
 
   # One-shot: applies db/migrations/core then db/migrations/vault and exits. The only
-  # thing in the system that ever changes the schema (§18.5). API and Worker gate on
-  # it completing successfully, so `docker compose up` migrates before either service
+  # thing in the system that ever changes the schema. API and Worker gate on it
+  # completing successfully, so `docker compose up` migrates before either service
   # accepts traffic and there is no manual step. A hosted deployment runs this same
-  # image once as a pre-deploy step instead — never on app boot, since replicas racing
-  # to migrate is exactly what the separate step avoids.
+  # image once as a pre-deploy step instead — never on app boot, because several
+  # replicas would otherwise race to migrate the same database at once.
   migrator:
     build:
       context: .
@@ -110,8 +111,8 @@ services:
     restart: "no"
     environment:
       # Both stores point at the same database today; the vault is a schema within it.
-      # §4 anticipates promoting it to its own database later, and because it has its
-      # own connection string and its own journal, that promotion is this one line.
+      # Because it has its own connection string and its own migration journal, moving
+      # it to a database of its own later is a change to this one line.
       ConnectionStrings__Core: >-
         Host=postgres;Port=5432;Database=${POSTGRES_DB:-dbr};Username=${POSTGRES_USER:-dbr};Password=${POSTGRES_PASSWORD:-dbr_dev_password}
       ConnectionStrings__Vault: >-

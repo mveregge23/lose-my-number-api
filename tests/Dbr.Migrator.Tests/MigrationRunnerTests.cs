@@ -9,9 +9,8 @@ namespace Dbr.Migrator.Tests;
 
 /// <summary>
 /// The runner's behaviour before it reaches a database. Applying scripts for real is
-/// exercised by <c>docker compose up</c> today and by the Testcontainers harness in
-/// DBR-085; what matters here is that a misconfigured run fails without touching
-/// anything.
+/// covered by the integration tests that run it against a container; what matters
+/// here is that a misconfigured run fails without touching anything.
 /// </summary>
 public class MigrationRunnerTests
 {
