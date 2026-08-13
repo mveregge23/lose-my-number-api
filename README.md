@@ -21,6 +21,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Database migrations](#database-migrations)
 - [The tenant boundary](#the-tenant-boundary)
 - [Signing in: passkeys](#signing-in-passkeys)
+- [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
 - [Working on the code without Docker](#working-on-the-code-without-docker)
 - [Deployment modes](#deployment-modes)
@@ -257,9 +258,10 @@ Two consequences worth knowing before you deploy this:
 - **Passkeys must be discoverable** (resident keys), and the authenticator must verify its
   holder — a biometric or a PIN. An authenticator with no room to store a resident credential
   cannot be used here. That is the cost of never asking who you are, and it is deliberate.
-- **Adding a second passkey to an existing account is not built yet.** It needs the request to
-  prove which account it is for, and this instance does not issue tokens yet. Until then an
-  account has exactly the one passkey it was opened with — worth knowing before you rely on it.
+- **Adding a second passkey to an existing account is not built yet.** Requests can now prove
+  which account they belong to, so the thing that blocked it is gone — but the endpoint itself is
+  still to come. Until then an account has exactly the one passkey it was opened with, which is
+  worth knowing before you rely on it: lose that authenticator and the account is unreachable.
 
 ### Configuring the relying party
 
@@ -287,6 +289,68 @@ Startup refuses a configuration that cannot work — a relying party written as 
 outside it, an empty origin list. That is deliberate: every one of those mistakes otherwise
 surfaces as a browser silently refusing a ceremony, which needs a real authenticator to reproduce
 and says nothing about which setting was wrong.
+
+## Sessions and tokens
+
+Signing up or signing in returns two tokens, and they do different jobs:
+
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "accessTokenExpiresAt": "2026-08-13T09:15:00Z",
+  "refreshToken": "0Yg7m2...",
+  "refreshTokenExpiresAt": "2026-09-12T09:00:00Z"
+}
+```
+
+- The **access token** is a JWT, sent as `Authorization: Bearer <token>` on every request. It is
+  checked by verifying its signature and asking the database nothing, which is what makes ordinary
+  requests cheap. It carries an account id and the timestamps that expire it — nothing else, since
+  anyone holding it can read it.
+- The **refresh token** is an opaque secret, exchanged at `POST /api/v1/auth/refresh` for a new
+  pair. It is good exactly once.
+
+### Rotation, and what happens when a token is stolen
+
+Every refresh spends the token presented and issues a new one. Keep what you get back — the old
+one stops working immediately.
+
+That is not bookkeeping. It is what turns a stolen refresh token from a permanent key into a race:
+whoever uses it first invalidates it for the other, and the loser's next attempt presents a token
+that has already been spent. **A spent token being presented again ends the whole session** — every
+token descended from that sign-in, including the one currently in someone's hands. Both parties
+have to sign in again, which is the only safe answer when there is no way to tell which of them is
+the legitimate one.
+
+Sessions also have a deadline rotation cannot move. A refresh token is good for 30 days and each
+rotation grants a fresh 30, but the session itself dies 90 days after the sign-in that started it,
+however often it has been refreshed.
+
+| Setting | Environment variable | Default |
+|---|---|---|
+| `Tokens:SigningKey` | `TOKEN_SIGNING_KEY` | none — startup fails without it |
+| `Tokens:AccessTokenLifetime` | `Tokens__AccessTokenLifetime` | `00:15:00` |
+| `Tokens:RefreshTokenLifetime` | `Tokens__RefreshTokenLifetime` | `30.00:00:00` |
+| `Tokens:SessionLifetime` | `Tokens__SessionLifetime` | `90.00:00:00` |
+
+**The signing key has no default and the API will not start without one.** A key committed to a
+public repository would mint valid access tokens for every deployment that never replaced it, so
+there is no value that could safely ship here. The compose file supplies a development one the same
+way it supplies a database password; `openssl rand -base64 48` produces a suitable replacement. It
+must be at least 32 bytes — a shorter key does not fail, it just makes the signature easier to
+forge than it looks.
+
+### Signing out, and the gap it leaves
+
+`POST /api/v1/auth/logout` ends the session the refresh token belongs to. It always answers `204`,
+whether or not the token meant anything, so it cannot be used to ask whether a token found
+somewhere is still worth something.
+
+**An access token already issued keeps working until it expires.** Nothing consults the database on
+an ordinary request — that is exactly what makes ordinary requests cheap — so signing out revokes
+the session but not the bearer token in flight. The window is `Tokens:AccessTokenLifetime`, fifteen
+minutes by default. Shorten it if that trade is wrong for you; the cost is a refresh round trip
+more often.
 
 ## OpenBao, sealing, and the unseal key
 
@@ -397,6 +461,7 @@ If you are only running this locally, you can stop reading here. If you are depl
 | `docker-compose.dev-ports.yml` publishing Postgres/RabbitMQ/OpenBao | You need psql and the UIs | Never used. Backing services stay off any public interface |
 | Migrations run automatically at startup | One machine, one instance | An explicit pre-deploy step — multiple replicas racing to migrate is exactly what that avoids |
 | Passkey relying party is `localhost` over plain HTTP | It is the only origin your browser will reach | Your real domain over HTTPS. Browsers refuse WebAuthn on any non-`localhost` origin without it, so this is enforced whether you set it or not |
+| Token signing key `dbr_dev_token_signing_key_...`, committed to the repo | Nobody else can reach the API to use it | A real secret. Whoever knows this key can mint an access token for any account, so it is the single most important value in this table |
 
 One gap is worth naming rather than leaving to be discovered: **completing a signup for an
 address that already has an account answers `409`**, which tells the caller that address is

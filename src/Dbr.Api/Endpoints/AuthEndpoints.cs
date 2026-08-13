@@ -33,6 +33,8 @@ public static class AuthEndpoints
         auth.MapPost("/register", CompleteRegistrationAsync);
         auth.MapPost("/login/options", BeginLoginAsync);
         auth.MapPost("/login", CompleteLoginAsync);
+        auth.MapPost("/refresh", RefreshAsync);
+        auth.MapPost("/logout", LogoutAsync);
 
         return endpoints;
     }
@@ -62,6 +64,7 @@ public static class AuthEndpoints
     private static async Task<IResult> CompleteRegistrationAsync(
         CompleteRegistrationRequest request,
         PasskeyService passkeys,
+        SessionService sessions,
         CancellationToken cancellationToken)
     {
         var result = await passkeys.CompleteSignupAsync(
@@ -71,7 +74,12 @@ public static class AuthEndpoints
 
         return result.Outcome switch
         {
-            PasskeySignupOutcome.Created => Results.Ok(new { tenantId = result.TenantId }),
+            // Signing up signs you in. The passkey has just been used to prove the
+            // account belongs to whoever registered it, so asking them to prove it
+            // again immediately would be ceremony rather than security.
+            PasskeySignupOutcome.Created => Results.Ok(SessionResponse(
+                result.TenantId,
+                await sessions.StartAsync(result.TenantId, cancellationToken))),
 
             PasskeySignupOutcome.CeremonyUnusable => Results.Problem(
                 "That registration has expired or was already completed. Start again.",
@@ -105,6 +113,7 @@ public static class AuthEndpoints
     private static async Task<IResult> CompleteLoginAsync(
         CompleteLoginRequest request,
         PasskeyService passkeys,
+        SessionService sessions,
         CancellationToken cancellationToken)
     {
         var result = await passkeys.CompleteLoginAsync(
@@ -116,9 +125,78 @@ public static class AuthEndpoints
         // credential" and "that signature is wrong" is only useful to somebody
         // checking whether a passkey they found belongs to an account here.
         return result.Outcome == PasskeyLoginOutcome.Authenticated
-            ? Results.Ok(new { tenantId = result.TenantId })
+            ? Results.Ok(SessionResponse(
+                result.TenantId,
+                await sessions.StartAsync(result.TenantId, cancellationToken)))
             : Results.Problem("Sign-in failed.", statusCode: StatusCodes.Status401Unauthorized);
     }
+
+    /// <summary>
+    /// Exchanges a refresh token for a new pair, spending the one presented.
+    /// </summary>
+    /// <remarks>
+    /// The old token stops working the moment this succeeds, so a client has to keep
+    /// what it gets back. That is what makes a copy of a refresh token detectable: the
+    /// second party to use one finds it already spent.
+    /// </remarks>
+    private static async Task<IResult> RefreshAsync(
+        RefreshRequest request,
+        SessionService sessions,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            return Unauthorized();
+        }
+
+        var result = await sessions.RefreshAsync(request.RefreshToken, cancellationToken);
+
+        // A reused token and an unknown one answer identically. The client that just
+        // had its session torn down for reuse is not told that is what happened —
+        // being told would be most useful to whoever caused it.
+        return result is { Outcome: SessionRefreshOutcome.Renewed, Session: { } session }
+            ? Results.Ok(SessionResponse(tenantId: null, session))
+            : Unauthorized();
+    }
+
+    /// <summary>
+    /// Ends the session a refresh token belongs to.
+    /// </summary>
+    /// <remarks>
+    /// Always answers the same way, whether or not the token was real — otherwise this
+    /// becomes a way to ask whether a token found somewhere is still worth something.
+    /// <para>
+    /// Access tokens already issued keep working until they expire. Nothing checks a
+    /// session on an ordinary request, which is what makes ordinary requests cheap;
+    /// the price is that signing out ends the session but not the access token in
+    /// flight, and the access token's lifetime is how long that lasts.
+    /// </para>
+    /// </remarks>
+    private static async Task<IResult> LogoutAsync(
+        RefreshRequest request,
+        SessionService sessions,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            await sessions.SignOutAsync(request.RefreshToken, cancellationToken);
+        }
+
+        return Results.NoContent();
+    }
+
+    private static IResult Unauthorized() =>
+        Results.Problem("Sign-in failed.", statusCode: StatusCodes.Status401Unauthorized);
+
+    private static object SessionResponse(Guid? tenantId, IssuedSession session) =>
+        new
+        {
+            tenantId,
+            accessToken = session.AccessToken,
+            accessTokenExpiresAt = session.AccessTokenExpiresAt,
+            refreshToken = session.RefreshToken,
+            refreshTokenExpiresAt = session.RefreshTokenExpiresAt,
+        };
 
     /// <summary>
     /// Wraps a ceremony handle around options the library has already serialised.
@@ -153,3 +231,6 @@ public sealed record CompleteRegistrationRequest(
 public sealed record CompleteLoginRequest(
     Guid CeremonyId,
     AuthenticatorAssertionRawResponse Credential);
+
+/// <param name="RefreshToken">The refresh token from the most recent response.</param>
+public sealed record RefreshRequest(string RefreshToken);

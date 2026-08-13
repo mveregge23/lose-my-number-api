@@ -32,6 +32,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          hand-written SQL; taking Identity would mean either two sources of truth for
          who an account is, or fighting its store abstractions to point at one. -->
     <PackageReference Include="Fido2" Version="4.0.1" />
+    <!-- Signs access tokens. Referenced directly rather than leaned on as a
+         transitive dependency of Fido2, which happens to bring an older copy of the
+         same library: relying on that would make the token format depend on what a
+         WebAuthn package chose. The validating half lives in Dbr.Api, which brings
+         its own — one assembly is resolved for the whole application, so the code
+         that signs and the code that checks are always the same version. -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.22.0" />
     <!-- Only the abstraction, so this layer reads configuration but never owns a
          provider chain: the composition roots decide where settings come from. The
          binder is the reading half of that, not a provider — it turns a section this

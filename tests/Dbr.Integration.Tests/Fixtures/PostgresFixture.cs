@@ -37,6 +37,13 @@ namespace Dbr.Integration.Tests.Fixtures;
 /// </remarks>
 public sealed class PostgresFixture : IAsyncLifetime
 {
+    /// <summary>
+    /// Long enough to satisfy the minimum the token settings enforce, and obviously
+    /// not a key anybody should copy.
+    /// </summary>
+    public const string TestSigningKey = "test-signing-key-not-for-any-real-deployment";
+
+
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("dbr")
         .WithUsername("dbr")
@@ -97,6 +104,13 @@ public sealed class PostgresFixture : IAsyncLifetime
                 new KeyValuePair<string, string?>(
                     $"ConnectionStrings:{InfrastructureServiceCollectionExtensions.CoreConnectionStringName}",
                     ConnectionString),
+
+                // Token signing has no default and refuses a short key, so every test
+                // provider needs one. A fixed value rather than a random one per run:
+                // a test that mints a token in one provider and presents it to another
+                // is testing something real, and would fail for an uninteresting
+                // reason if the two disagreed.
+                new KeyValuePair<string, string?>("Tokens:SigningKey", TestSigningKey),
                 .. settings,
             ])
             .Build();
@@ -104,6 +118,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         return new ServiceCollection()
             .AddDbrPersistence(configuration)
             .AddDbrPasskeys(configuration)
+            .AddDbrSessions(configuration)
             .BuildServiceProvider();
     }
 
