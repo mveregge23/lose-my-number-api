@@ -141,6 +141,13 @@ services:
       # refused by the browser before the server ever sees it.
       Passkeys__RelyingPartyId: ${PASSKEY_RELYING_PARTY_ID:-localhost}
       Passkeys__Origins__0: ${PASSKEY_ORIGIN:-http://localhost:8080}
+      # Signs the access tokens this instance issues, and verifies them coming back.
+      # It has no built-in default on purpose: a key compiled into the source would
+      # mint valid tokens for every deployment that never replaced it, so the API
+      # refuses to start without one rather than starting with a known key. This is a
+      # development value like the passwords above and belongs in the same table of
+      # things a real deployment has to replace.
+      Tokens__SigningKey: ${TOKEN_SIGNING_KEY:-dbr_dev_token_signing_key_do_not_use_in_production}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:

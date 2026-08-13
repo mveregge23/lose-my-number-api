@@ -8,4 +8,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     <ProjectReference Include="..\Dbr.Infrastructure\Dbr.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Checks the access tokens Dbr.Infrastructure issues. Only this project needs
+         it: validation is a property of the request pipeline, and the worker has no
+         pipeline to validate anything in. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+  </ItemGroup>
+
 </Project>

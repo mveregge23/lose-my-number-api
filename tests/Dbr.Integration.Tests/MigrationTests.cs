@@ -21,7 +21,7 @@ public class MigrationTests(PostgresFixture postgres)
     [Fact]
     public async Task Both_sets_journal_what_they_applied()
     {
-        Assert.Equal(5, await postgres.QueryAsOwnerAsync<long>(
+        Assert.Equal(6, await postgres.QueryAsOwnerAsync<long>(
             $"SELECT count(*) FROM public.{MigrationSet.Core.JournalTable}"));
 
         Assert.Equal(1, await postgres.QueryAsOwnerAsync<long>(
