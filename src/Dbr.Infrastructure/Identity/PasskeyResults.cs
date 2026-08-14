@@ -72,3 +72,46 @@ public sealed record PasskeyLoginResult(PasskeyLoginOutcome Outcome, Guid Tenant
 {
     public static PasskeyLoginResult Failed(PasskeyLoginOutcome outcome) => new(outcome, Guid.Empty);
 }
+
+/// <summary>How an attempt to add a passkey to an existing account ended.</summary>
+public enum PasskeyAdditionOutcome
+{
+    /// <summary>The account has another way in.</summary>
+    Added,
+
+    /// <summary>
+    /// The ceremony was unknown, expired, already finished, or issued for something
+    /// else.
+    /// </summary>
+    CeremonyUnusable,
+
+    /// <summary>
+    /// The ceremony was issued to a different account than the one now finishing it.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="CeremonyUnusable"/> in the code and to tests, and
+    /// indistinguishable from it to the caller. It is the check that stops a challenge
+    /// obtained while signed in as one account from attaching a passkey to another —
+    /// the ceremony handle alone would otherwise be enough, since by this point the
+    /// authenticator has signed something perfectly valid.
+    /// </remarks>
+    WrongAccount,
+
+    /// <summary>The authenticator's answer did not check out.</summary>
+    AttestationRejected,
+
+    /// <summary>
+    /// That passkey is already registered here.
+    /// </summary>
+    /// <remarks>
+    /// Including to somebody else, which is answered the same way. Whose it is would
+    /// be the interesting part of that answer, and is nobody's business but theirs.
+    /// </remarks>
+    AlreadyRegistered,
+}
+
+/// <param name="PasskeyId">The passkey created, or <see langword="null"/> if none was.</param>
+public sealed record PasskeyAdditionResult(PasskeyAdditionOutcome Outcome, Guid? PasskeyId)
+{
+    public static PasskeyAdditionResult Failed(PasskeyAdditionOutcome outcome) => new(outcome, null);
+}

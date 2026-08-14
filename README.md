@@ -258,10 +258,31 @@ Two consequences worth knowing before you deploy this:
 - **Passkeys must be discoverable** (resident keys), and the authenticator must verify its
   holder — a biometric or a PIN. An authenticator with no room to store a resident credential
   cannot be used here. That is the cost of never asking who you are, and it is deliberate.
-- **Adding a second passkey to an existing account is not built yet.** Requests can now prove
-  which account they belong to, so the thing that blocked it is gone — but the endpoint itself is
-  still to come. Until then an account has exactly the one passkey it was opened with, which is
-  worth knowing before you rely on it: lose that authenticator and the account is unreachable.
+- **Register a second passkey.** An account with one passkey has one way in, and whatever holds
+  it can be lost, broken or wiped — see below.
+
+### Keeping more than one way in
+
+An account opened with a single passkey can be reached by exactly one device. If that device is
+lost, so is the account: there is no password to fall back on and no recovery flow. **Register a
+second passkey on a different device**, ideally one whose passkeys sync to a password manager.
+
+Adding one is the same two-step ceremony as signing up, on routes that require a token — the
+account is never named in the request, it comes from the token:
+
+1. `POST /api/v1/account/passkeys/options` — no body. The response names the passkeys the account
+   already has, so an authenticator that recognises one of them declines rather than creating a
+   duplicate.
+2. `POST /api/v1/account/passkeys` — with what the browser produced.
+
+`GET /api/v1/account/passkeys` lists what the account can be reached with, including whether each
+one is backed up. That flag is the one worth reading: it separates a passkey synced to a password
+manager from one that exists on a single device and goes with it.
+
+**Removing a passkey is not built yet.** A lost device's passkey stays valid until it is, which
+matters if the device was stolen rather than dropped in a river — and the endpoint needs a
+deliberate answer to what happens when you remove the last one, since that is an account nobody
+can reach again.
 
 ### Configuring the relying party
 
