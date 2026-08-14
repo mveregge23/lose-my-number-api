@@ -36,6 +36,7 @@ public sealed class PasskeyService(
     IFido2 fido2,
     PasskeyCeremonyStore ceremonies,
     PasskeyLookup passkeys,
+    AccountGate accounts,
     DbrDbContext context,
     TenantContext tenantContext,
     PasskeyOptions options)
@@ -459,6 +460,16 @@ public sealed class PasskeyService(
         catch (Fido2VerificationException)
         {
             return PasskeyLoginResult.Failed(PasskeyLoginOutcome.AssertionRejected);
+        }
+
+        // The account is known now, so the ordinary boundary applies and the base gate
+        // can be asked. Before recording anything: a sign-in that is about to be
+        // refused should not leave a mark saying the passkey was used to get in.
+        tenantContext.SetTenant(stored.TenantId);
+
+        if (!await accounts.MayActAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return PasskeyLoginResult.Failed(PasskeyLoginOutcome.AccountSuspended);
         }
 
         await RecordUseAsync(stored.TenantId, assertion.RawId, verified, cancellationToken)

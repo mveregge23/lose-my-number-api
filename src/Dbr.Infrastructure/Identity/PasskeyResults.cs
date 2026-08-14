@@ -63,6 +63,18 @@ public enum PasskeyLoginOutcome
     /// question the whole login path is built to avoid answering.
     /// </remarks>
     AssertionRejected,
+
+    /// <summary>
+    /// The assertion was good, and the account is suspended.
+    /// </summary>
+    /// <remarks>
+    /// Told plainly, unlike every other failure here. Reaching this required signing
+    /// this server's challenge with the account's own passkey, so whoever is asking is
+    /// its owner — and leaving an owner to guess why they cannot get in would be
+    /// withholding something from the one person entitled to it, in exchange for
+    /// nothing an attacker could not already have worked out.
+    /// </remarks>
+    AccountSuspended,
 }
 
 /// <param name="TenantId">

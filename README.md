@@ -373,6 +373,28 @@ the session but not the bearer token in flight. The window is `Tokens:AccessToke
 minutes by default. Shorten it if that trade is wrong for you; the cost is a refresh round trip
 more often.
 
+### Suspending an account
+
+`tenant.status` is a base gate that every deployment enforces, independently of billing. A
+self-hosted operator suspending an abusive user of their own instance — a shared household
+deployment, say — uses the same mechanism a hosted instance would:
+
+```sql
+UPDATE tenant SET status = 'suspended' WHERE id = '...';
+```
+
+A suspended account cannot sign in, and cannot renew a session it already had. The second half is
+the one that matters: a session outlives the sign-in that created it, so a gate only at sign-in
+would let a suspended account keep renewing access indefinitely on a token it obtained the day
+before.
+
+**Suspension is not deletion.** The session is left intact rather than revoked, so setting the
+status back to `active` restores what was there. And the same fifteen-minute caveat applies: an
+access token already issued keeps working until it expires.
+
+There is no endpoint for this yet — it is a database change, made by whoever operates the
+instance.
+
 ## OpenBao, sealing, and the unseal key
 
 OpenBao encrypts its storage with a master key, which is itself protected by an **unseal key**. On

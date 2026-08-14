@@ -52,6 +52,17 @@ public enum SessionRefreshOutcome
     /// </para>
     /// </remarks>
     ReusedAndRevoked,
+
+    /// <summary>
+    /// The token was good, and the account is suspended.
+    /// </summary>
+    /// <remarks>
+    /// The session is left intact rather than revoked. Suspension is not deletion, so
+    /// lifting it should restore what was there — tearing the session down would make
+    /// a reversible measure quietly permanent for anyone who was signed in when it
+    /// happened.
+    /// </remarks>
+    AccountSuspended,
 }
 
 /// <param name="Session">The new pair, or <see langword="null"/> if none was issued.</param>
