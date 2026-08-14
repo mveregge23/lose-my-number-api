@@ -33,3 +33,8 @@ app.MapAccountEndpoints();
 app.MapPasskeyEndpoints();
 
 app.Run();
+
+// Top-level statements compile into an internal Program class, which the in-process
+// test host cannot name from another assembly. Declaring it here is what lets the
+// tests boot this exact composition root rather than a copy of it.
+public partial class Program;
