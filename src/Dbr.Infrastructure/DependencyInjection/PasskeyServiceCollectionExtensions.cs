@@ -5,6 +5,7 @@ using Dbr.Infrastructure.Identity;
 using Fido2NetLib;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Dbr.Infrastructure.DependencyInjection;
 
@@ -51,6 +52,11 @@ public static class PasskeyServiceCollectionExtensions
         }));
 
         // Scoped, because each takes the request's DbContext and therefore its tenant.
+        // Shared with session handling, which needs the same gate and may be
+        // registered either side of this. TryAdd so whichever runs second finds it
+        // already there rather than adding a second registration of the same thing.
+        services.TryAddScoped<AccountGate>();
+
         services.AddScoped<PasskeyCeremonyStore>();
         services.AddScoped<PasskeyLookup>();
         services.AddScoped<PasskeyService>();

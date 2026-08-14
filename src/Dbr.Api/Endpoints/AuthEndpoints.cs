@@ -124,11 +124,20 @@ public static class AuthEndpoints
         // Every failure answers the same way. The distinction between "no such
         // credential" and "that signature is wrong" is only useful to somebody
         // checking whether a passkey they found belongs to an account here.
-        return result.Outcome == PasskeyLoginOutcome.Authenticated
-            ? Results.Ok(SessionResponse(
+        return result.Outcome switch
+        {
+            PasskeyLoginOutcome.Authenticated => Results.Ok(SessionResponse(
                 result.TenantId,
-                await sessions.StartAsync(result.TenantId, cancellationToken)))
-            : Results.Problem("Sign-in failed.", statusCode: StatusCodes.Status401Unauthorized);
+                await sessions.StartAsync(result.TenantId, cancellationToken))),
+
+            // Said plainly, unlike the failures above it. Getting this far took a
+            // signature from the account's own passkey, so this is its owner being
+            // told why they cannot get in — which is not something an attacker learns
+            // anything from.
+            PasskeyLoginOutcome.AccountSuspended => Suspended(),
+
+            _ => Unauthorized(),
+        };
     }
 
     /// <summary>
@@ -154,9 +163,15 @@ public static class AuthEndpoints
         // A reused token and an unknown one answer identically. The client that just
         // had its session torn down for reuse is not told that is what happened —
         // being told would be most useful to whoever caused it.
-        return result is { Outcome: SessionRefreshOutcome.Renewed, Session: { } session }
-            ? Results.Ok(SessionResponse(tenantId: null, session))
-            : Unauthorized();
+        return result switch
+        {
+            { Outcome: SessionRefreshOutcome.Renewed, Session: { } session } =>
+                Results.Ok(SessionResponse(tenantId: null, session)),
+
+            { Outcome: SessionRefreshOutcome.AccountSuspended } => Suspended(),
+
+            _ => Unauthorized(),
+        };
     }
 
     /// <summary>
@@ -187,6 +202,16 @@ public static class AuthEndpoints
 
     private static IResult Unauthorized() =>
         Results.Problem("Sign-in failed.", statusCode: StatusCodes.Status401Unauthorized);
+
+    /// <summary>
+    /// Forbidden rather than unauthorized: the credential was accepted, and it is the
+    /// account it belongs to that may not act.
+    /// </summary>
+    private static IResult Suspended() =>
+        Results.Problem(
+            "This account is suspended and cannot be used to sign in. Contact whoever operates "
+            + "this instance.",
+            statusCode: StatusCodes.Status403Forbidden);
 
     private static object SessionResponse(Guid? tenantId, IssuedSession session) =>
         new

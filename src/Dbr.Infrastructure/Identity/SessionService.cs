@@ -35,6 +35,7 @@ namespace Dbr.Infrastructure.Identity;
 public sealed class SessionService(
     DbrDbContext context,
     RefreshTokenLookup refreshTokens,
+    AccountGate accounts,
     TenantContext tenantContext,
     SessionTokenOptions options)
 {
@@ -108,6 +109,16 @@ public sealed class SessionService(
             || stored.SessionStartedAt + options.SessionLifetime <= now)
         {
             return SessionRefreshResult.Failed(SessionRefreshOutcome.Rejected);
+        }
+
+        // Checked here rather than only at sign-in, because a session outlives the
+        // sign-in that made it: without this, an account suspended today keeps
+        // renewing its access indefinitely on a token it obtained yesterday. The
+        // session itself is left alone — suspension is reversible, and tearing it down
+        // would make lifting it a partial restoration.
+        if (!await accounts.MayActAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return SessionRefreshResult.Failed(SessionRefreshOutcome.AccountSuspended);
         }
 
         IssuedSession? issued = null;
