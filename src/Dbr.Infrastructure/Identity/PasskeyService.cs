@@ -197,6 +197,192 @@ public sealed class PasskeyService(
     }
 
     /// <summary>
+    /// Issues a challenge for adding another passkey to the account already signed in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The reason this exists is that an account with one passkey is an account with
+    /// one way in. Whatever holds it — a phone, a security key — can be lost, broken,
+    /// or wiped, and until there is a second one that event is the end of the account
+    /// rather than an inconvenience.
+    /// </para>
+    /// <para>
+    /// Unlike a signup, this account already exists and is already established for
+    /// this unit of work, so nothing here mints an id or takes an address: both are
+    /// read from the account the caller has already proved they hold.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// Nobody is signed in. Adding a passkey to "whichever account this is" is not a
+    /// meaningful request, and treating an unset tenant as one would mean issuing a
+    /// challenge whose user handle is nothing.
+    /// </exception>
+    public async Task<PasskeyChallenge<CredentialCreateOptions>> BeginAdditionAsync(
+        CancellationToken cancellationToken)
+    {
+        var tenantId = RequireSignedIn();
+
+        // Both come from rows the caller can already see. The account is visible
+        // because this request is acting as it; if it were not, this would find
+        // nothing rather than somebody else's.
+        var account = await context.Set<Tenant>()
+            .SingleAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var existing = await context.Set<Passkey>()
+            .Select(passkey => passkey.CredentialId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var createOptions = fido2.RequestNewCredential(new RequestNewCredentialParams
+        {
+            User = new Fido2User
+            {
+                Id = tenantId.ToByteArray(bigEndian: true),
+                Name = account.Email,
+                DisplayName = account.Email,
+            },
+
+            // What the account already has. An authenticator that recognises one of
+            // these refuses to make a second — so the person who taps the same key
+            // twice is told they already have it, instead of quietly ending up with
+            // two credentials that do the same job and cannot be told apart.
+            //
+            // No transports accompany them, which is a hint this list can carry and
+            // does not need: the authenticator matches on the credential id, and the
+            // hints only help a client decide where to look.
+            ExcludeCredentials = [.. existing.Select(credentialId => new PublicKeyCredentialDescriptor(credentialId))],
+
+            AuthenticatorSelection = new AuthenticatorSelection
+            {
+                // The same terms as the first one. A passkey that the authenticator
+                // does not store could not be offered at a sign-in that names no
+                // account, so it would be a credential this service cannot use.
+                ResidentKey = ResidentKeyRequirement.Required,
+                UserVerification = UserVerificationRequirement.Required,
+            },
+
+            AttestationPreference = AttestationConveyancePreference.None,
+        });
+
+        var ceremonyId = await ceremonies.IssueAsync(
+            PasskeyCeremonyPurpose.Registration,
+            createOptions.ToJson(),
+            options.CeremonyLifetime,
+            cancellationToken).ConfigureAwait(false);
+
+        return new PasskeyChallenge<CredentialCreateOptions>(ceremonyId, createOptions);
+    }
+
+    /// <summary>
+    /// Verifies the answer and, if it holds up, files the new passkey under the
+    /// account that asked for it.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Nobody is signed in.</exception>
+    public async Task<PasskeyAdditionResult> CompleteAdditionAsync(
+        Guid ceremonyId,
+        AuthenticatorAttestationRawResponse attestation,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = RequireSignedIn();
+
+        var claimed = await ceremonies
+            .ClaimAsync(ceremonyId, PasskeyCeremonyPurpose.Registration, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (claimed is null)
+        {
+            return PasskeyAdditionResult.Failed(PasskeyAdditionOutcome.CeremonyUnusable);
+        }
+
+        var original = CredentialCreateOptions.FromJson(claimed);
+
+        // The ceremony says which account it was issued for, and the caller has proved
+        // which account they are. They have to be the same one. Without this, a
+        // challenge obtained while signed in as one account could be finished while
+        // signed in as another — and everything else about that request would be
+        // valid, including the authenticator's signature over it.
+        //
+        // It is also what keeps a signup ceremony from being finished here, since the
+        // account it names does not exist yet and so cannot be the caller.
+        if (!original.User.Id.AsSpan().SequenceEqual(tenantId.ToByteArray(bigEndian: true)))
+        {
+            return PasskeyAdditionResult.Failed(PasskeyAdditionOutcome.WrongAccount);
+        }
+
+        RegisteredPublicKeyCredential registered;
+
+        try
+        {
+            registered = await fido2.MakeNewCredentialAsync(
+                new MakeNewCredentialParams
+                {
+                    AttestationResponse = attestation,
+                    OriginalOptions = original,
+
+                    // Through the same lookup signing in uses, rather than a query
+                    // over this account's own rows: a credential registered to
+                    // somebody else is invisible from here, and the collision would
+                    // then surface as a unique-index violation instead of an answer.
+                    IsCredentialIdUniqueToUserCallback = async (parameters, token) =>
+                        await passkeys.FindAsync(parameters.CredentialId, token)
+                            .ConfigureAwait(false) is null,
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Fido2VerificationException)
+        {
+            // Includes the case where the credential is already registered, since the
+            // callback above refusing it is reported as a verification failure. The
+            // index below is what makes that guarantee rather than a check.
+            return PasskeyAdditionResult.Failed(PasskeyAdditionOutcome.AttestationRejected);
+        }
+
+        var passkey = new Passkey
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            CredentialId = registered.Id,
+            PublicKey = registered.PublicKey,
+            SignatureCount = registered.SignCount,
+            IsBackupEligible = registered.IsBackupEligible,
+            IsBackedUp = registered.IsBackedUp,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        context.Set<Passkey>().Add(passkey);
+
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            // Registered between the check above and here, or registered to an account
+            // this one cannot see. The unique index is global for exactly this reason:
+            // a credential id has to resolve to one account at sign-in, when there is
+            // no opportunity to disambiguate.
+            return PasskeyAdditionResult.Failed(PasskeyAdditionOutcome.AlreadyRegistered);
+        }
+
+        return new PasskeyAdditionResult(PasskeyAdditionOutcome.Added, passkey.Id);
+    }
+
+    /// <summary>
+    /// The account's own passkeys, newest first.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Nobody is signed in.</exception>
+    public async Task<IReadOnlyList<Passkey>> ListAsync(CancellationToken cancellationToken)
+    {
+        RequireSignedIn();
+
+        return await context.Set<Passkey>()
+            .OrderByDescending(passkey => passkey.CreatedAt)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Issues a challenge for signing in, naming no account and no credential.
     /// </summary>
     /// <remarks>
@@ -316,6 +502,21 @@ public sealed class PasskeyService(
 
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The account this request is acting for, or an exception.
+    /// </summary>
+    /// <remarks>
+    /// Not a fail-closed read that quietly returns nothing: the operations calling
+    /// this are meaningless without an account, and an unset tenant here means a route
+    /// was reached without authentication rather than a request that legitimately
+    /// belongs to nobody.
+    /// </remarks>
+    private Guid RequireSignedIn() =>
+        tenantContext.TenantId
+        ?? throw new InvalidOperationException(
+            "This operation acts on the signed-in account, and no account is established for "
+            + "this request. The route needs to require authentication.");
 
     private static bool IsUniqueViolation(DbUpdateException exception) =>
         exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };

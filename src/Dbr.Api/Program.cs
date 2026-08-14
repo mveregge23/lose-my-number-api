@@ -30,5 +30,6 @@ app.UseAuthorization();
 app.MapGet("/", () => "Hello World!");
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
+app.MapPasskeyEndpoints();
 
 app.Run();
