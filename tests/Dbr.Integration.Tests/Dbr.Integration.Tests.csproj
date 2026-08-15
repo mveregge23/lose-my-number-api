@@ -42,6 +42,15 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The policy file the compose stack applies, copied next to the tests so they
+         exercise the same bytes a deployment does. A test against its own copy of a
+         policy proves only that the copy is consistent with itself. -->
+    <Content Include="..\..\openbao\policies\*.hcl"
+             Link="openbao-policies\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

@@ -115,6 +115,29 @@ public sealed class OpenBaoFixture : IAsyncLifetime
         return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
     }
 
+    /// <summary>Installs a policy, exactly as the compose stack's init step does.</summary>
+    public async Task WritePolicyAsync(string name, string policy)
+    {
+        var response = await Client.PostAsJsonAsync($"/v1/sys/policies/acl/{name}", new { policy });
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// Mints a token holding one policy and nothing else — no default policy, so what
+    /// it can do is exactly what that file grants.
+    /// </summary>
+    public async Task<string> CreateScopedTokenAsync(string policyName)
+    {
+        var response = await Client.PostAsJsonAsync(
+            "/v1/auth/token/create",
+            new { policies = new[] { policyName }, no_default_policy = true, ttl = "1h" });
+
+        response.EnsureSuccessStatusCode();
+
+        return (await response.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("auth").GetProperty("client_token").GetString()!;
+    }
+
     /// <summary>The raw client, for asserting on responses this wrapper doesn't model.</summary>
     public HttpClient Client =>
         _client ?? throw new InvalidOperationException("The fixture has not been initialized.");

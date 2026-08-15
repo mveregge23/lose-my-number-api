@@ -19,7 +19,9 @@ BAO_ADDR="${BAO_ADDR:-http://openbao:8200}"
 export BAO_ADDR
 
 KEYFILE=/keys/openbao-init.txt
-DEV_TOKEN="${DEV_TOKEN:-dbr_dev_root_token}"
+DEV_TOKEN="${DEV_TOKEN:-dbr_dev_api_token}"
+POLICY_NAME=dbr-api
+POLICY_FILE=/policies/dbr-api.hcl
 
 # `bao status` exits 0 unsealed, 2 sealed, 1 when it can't reach the server.
 # Anything but 1 means the server is answering.
@@ -81,14 +83,36 @@ else
   bao secrets enable transit >/dev/null
 fi
 
-# The generated root token changes on every re-init, which would mean editing
-# .env each time. Minting an additional token with a stable, well-known id lets
-# the API and Worker keep a fixed config value across re-initializations.
+# The policy is the enforceable half of "the application holds only what it needs".
+# Written on every run rather than only when absent, so editing the file and bringing
+# the stack up is enough to apply it — a policy that drifts from the file in the
+# repository is worse than none, because the file is what anyone would read.
+if [ -r "$POLICY_FILE" ]; then
+  echo "openbao-init: applying the $POLICY_NAME policy"
+  bao policy write "$POLICY_NAME" "$POLICY_FILE" >/dev/null
+else
+  echo "openbao-init: $POLICY_FILE is missing; refusing to fall back to a root token" >&2
+  exit 1
+fi
+
+# The generated root token changes on every re-init, which would mean editing .env
+# each time. Minting a token with a stable, well-known id lets the API keep a fixed
+# config value across re-initializations.
+#
+# Scoped to the policy above and created with no default policy, so it holds exactly
+# the paths that file grants and nothing incidental. Unlike a root token it does
+# expire; if it has, the lookup below fails and this makes a new one, so the stack
+# heals itself on the next `docker compose up`.
 if bao token lookup "$DEV_TOKEN" >/dev/null 2>&1; then
   echo "openbao-init: local token already present"
 else
-  echo "openbao-init: creating well-known local token"
-  bao token create -id="$DEV_TOKEN" -policy=root -ttl=0 >/dev/null
+  echo "openbao-init: creating well-known local token scoped to $POLICY_NAME"
+  bao token create \
+    -id="$DEV_TOKEN" \
+    -policy="$POLICY_NAME" \
+    -no-default-policy \
+    -ttl=768h \
+    -display-name="dbr-api" >/dev/null
 fi
 
 echo "openbao-init: ready"
