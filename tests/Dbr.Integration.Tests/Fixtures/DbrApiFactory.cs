@@ -43,5 +43,16 @@ internal sealed class DbrApiFactory(string connectionString) : WebApplicationFac
         builder.UseSetting("Tokens:SigningKey", PostgresFixture.TestSigningKey);
         builder.UseSetting("Passkeys:RelyingPartyId", "localhost");
         builder.UseSetting("Passkeys:Origins:0", Origin);
+
+        // A placeholder that satisfies startup validation and nothing more. These
+        // tests exercise the request pipeline, not encryption, so nothing here calls
+        // the key manager — and if something ever does, pointing at a port with
+        // nothing behind it makes that a loud failure rather than a quiet one.
+        //
+        // Supplying it at all is the point: the composition root refuses to start
+        // without it, and a test host that skipped that check would boot happily on
+        // configuration the real thing rejects.
+        builder.UseSetting("Bao:Address", "http://127.0.0.1:1");
+        builder.UseSetting("Bao:Token", "not-a-usable-token");
     }
 }

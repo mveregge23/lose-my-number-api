@@ -458,10 +458,11 @@ docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml up postgres
 dotnet run --project src/Dbr.Api
 ```
 
-The overlay is what publishes Postgres on `localhost:5432`; the `Development` settings files point
-the API and Worker there. Outside compose, and outside `Development`, both services need
-`ConnectionStrings__Core` set — they refuse to start without it rather than failing on the first
-request that needs a database.
+The overlay is what publishes Postgres on `localhost:5432` and OpenBao on `localhost:8200`; the
+`Development` settings files point the API and Worker at both, and carry a development token
+signing key. Outside compose, and outside `Development`, both services need `ConnectionStrings__Core`,
+`Tokens__SigningKey` and `Bao__Address`/`Bao__Token` set — they refuse to start without any of them,
+rather than failing later on the first request that needs a database, a token, or a key.
 
 Every source file carries an SPDX header:
 

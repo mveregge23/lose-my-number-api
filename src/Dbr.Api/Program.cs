@@ -14,6 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbrPersistence(builder.Configuration);
 builder.Services.AddDbrPasskeys(builder.Configuration);
 builder.Services.AddDbrSessions(builder.Configuration);
+builder.Services.AddDbrKeyManagement(builder.Configuration);
 builder.Services.AddDbrBearerAuthentication();
 
 var app = builder.Build();
