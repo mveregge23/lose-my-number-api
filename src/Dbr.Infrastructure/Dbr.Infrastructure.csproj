@@ -45,6 +45,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          layer was handed into an options object. -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.4" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.4" />
+    <!-- Typed HttpClient for the key manager. The factory rather than a hand-built
+         client because it recycles handlers on a schedule; a long-lived HttpClient
+         pins DNS forever, which matters for a service every write depends on. -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.4" />
   </ItemGroup>
 
   <ItemGroup>
