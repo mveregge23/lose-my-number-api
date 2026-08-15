@@ -8,10 +8,11 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddDbrPersistence(builder.Configuration);
 
-// The worker will need this to read the fields a removal job was granted. Registered
-// here as well as in the API so that a misconfigured key manager stops the worker at
-// startup rather than at the first job that needs to decrypt something.
-builder.Services.AddDbrKeyManagement(builder.Configuration);
+// Deliberately no key management here. This process drives browsers against
+// third-party sites, so a credential that can decrypt would be a standing decryption
+// right sitting in the most exposed part of the system. When a job needs a tenant's
+// fields, it will ask for a short-lived release of only those fields from the service
+// that does hold the keys — which can refuse, and can record that it was asked.
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();

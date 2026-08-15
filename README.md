@@ -416,6 +416,30 @@ Two things to know:
   unseal key beside the data it protects gives up sealing as a security control while keeping it
   as a durability mechanism. That trade is fine on your laptop and wrong on a server — see below.
 
+### What the application is allowed to ask the key manager for
+
+The API authenticates to OpenBao with a token scoped to
+[`openbao/policies/dbr-api.hcl`](openbao/policies/dbr-api.hcl), applied by `openbao-init` on every
+`docker compose up`. Editing that file and bringing the stack up is enough to change it.
+
+It grants three things — create/configure/delete a wrapping key named `tenant-*`, mint a data key
+under one, and decrypt one — and, because policies are deny-by-default, withholds everything else.
+Two of those absences are the point:
+
+- **It cannot list keys.** Keys are named after tenants, so listing them would enumerate every
+  account on the instance — the question the whole sign-in design refuses to answer. Being able to
+  decrypt and being able to find out who exists are different powers, and this token has only the
+  first.
+- **It cannot encrypt chosen data under a tenant's key.** Nothing needs to: the only thing a
+  wrapping key ever wraps is a data key, and OpenBao mints those itself.
+
+**The Worker holds no key-manager credentials at all.** It drives browsers against third-party
+sites, so a token that can decrypt would be a standing decryption right sitting in the most exposed
+part of the system. When a job needs a tenant's fields it will ask for a short-lived release of
+only those fields from the service that does hold the keys — which can refuse, and can record that
+it was asked. That release path is not built yet, which is why the Worker currently has nothing to
+decrypt with and nothing to decrypt.
+
 ## Working on the code without Docker
 
 ```bash
@@ -500,7 +524,7 @@ If you are only running this locally, you can stop reading here. If you are depl
 |---|---|---|
 | Credentials `dbr` / `dbr_dev_password`, committed to the repo | Nothing but the API is reachable from your host, and only you are on it | Real secrets from a secrets manager or environment, never from a committed default |
 | OpenBao unseal key on disk beside the data | Convenience; your disk is already the trust boundary | Auto-unseal via a cloud KMS/HSM, or Shamir shares held by different people. **Never** the keyfile pattern |
-| App authenticates to OpenBao with a **root** token | No app code calls Transit yet | A scoped policy granting only `transit/encrypt` + `transit/decrypt` on its own keys |
+| App authenticates to OpenBao with a token scoped to `openbao/policies/dbr-api.hcl` | Same policy a deployment uses; only the *token id* is well-known | Nothing to change here — but issue the token through an auth method rather than a fixed id, so it rotates |
 | `tls_disable = true` on the OpenBao listener | Traffic never leaves the compose network | TLS terminated at the listener, or a mutually-authenticated mesh |
 | `docker-compose.dev-ports.yml` publishing Postgres/RabbitMQ/OpenBao | You need psql and the UIs | Never used. Backing services stay off any public interface |
 | Migrations run automatically at startup | One machine, one instance | An explicit pre-deploy step — multiple replicas racing to migrate is exactly what that avoids |
