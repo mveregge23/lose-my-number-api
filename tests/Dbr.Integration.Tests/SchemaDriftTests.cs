@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Infrastructure.Persistence;
+using Dbr.Infrastructure.Vault;
 using Dbr.Integration.Tests.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -51,6 +52,22 @@ public class SchemaDriftTests(PostgresFixture postgres) : IAsyncLifetime
     {
         using var scope = _services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<DbrDbContext>();
+
+        var drift = await SchemaDrift.DetectAsync(context, postgres.ConnectionString);
+        var queryFailures = await SchemaDrift.ProbeEveryEntityAsync(context);
+
+        Assert.Empty(drift);
+        Assert.Empty(queryFailures);
+    }
+
+    [Fact]
+    public async Task The_vault_model_matches_the_migrated_schema()
+    {
+        // The other store, and the one where drift would be least visible: nothing else
+        // reads these tables, so a renamed column would surface on the day somebody's
+        // identity was written rather than the day the migration landed.
+        using var scope = _services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<VaultDbContext>();
 
         var drift = await SchemaDrift.DetectAsync(context, postgres.ConnectionString);
         var queryFailures = await SchemaDrift.ProbeEveryEntityAsync(context);

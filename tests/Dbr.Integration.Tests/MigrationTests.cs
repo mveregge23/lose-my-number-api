@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Tenancy;
 using Dbr.Infrastructure.Persistence;
+using Dbr.Infrastructure.Vault;
 using Dbr.Integration.Tests.Fixtures;
 using Dbr.Migrator;
 using DbUp.Engine.Output;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Dbr.Integration.Tests;
@@ -21,10 +24,10 @@ public class MigrationTests(PostgresFixture postgres)
     [Fact]
     public async Task Both_sets_journal_what_they_applied()
     {
-        Assert.Equal(6, await postgres.QueryAsOwnerAsync<long>(
+        Assert.Equal(8, await postgres.QueryAsOwnerAsync<long>(
             $"SELECT count(*) FROM public.{MigrationSet.Core.JournalTable}"));
 
-        Assert.Equal(1, await postgres.QueryAsOwnerAsync<long>(
+        Assert.Equal(3, await postgres.QueryAsOwnerAsync<long>(
             $"SELECT count(*) FROM public.{MigrationSet.Vault.JournalTable}"));
     }
 
@@ -124,23 +127,15 @@ public class MigrationTests(PostgresFixture postgres)
         // says so — until a connection reaches the database as the wrong role and the
         // defence in depth that should have covered it was never there.
         using var scope = postgres.BuildServices().CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<DbrDbContext>();
 
         var unfiltered = new List<string>();
 
-        foreach (var entityType in context.Model.GetEntityTypes())
+        foreach (var entityType in EveryMappedEntity(scope.ServiceProvider))
         {
-            if (entityType.GetTableName() is not { } tableName || entityType.IsOwned())
+            if (await HasRowLevelSecurityAsync(entityType.Table)
+                && entityType.EntityType.GetDeclaredQueryFilters().Count == 0)
             {
-                continue;
-            }
-
-            var isProtected = await postgres.QueryAsOwnerAsync<bool>(
-                $"SELECT coalesce((SELECT relrowsecurity FROM pg_class WHERE relname = '{tableName}'), false)");
-
-            if (isProtected && entityType.GetDeclaredQueryFilters().Count == 0)
-            {
-                unfiltered.Add($"{entityType.ClrType.Name} -> {tableName}");
+                unfiltered.Add($"{entityType.EntityType.ClrType.Name} -> {entityType.Table}");
             }
         }
 
@@ -166,25 +161,19 @@ public class MigrationTests(PostgresFixture postgres)
         // ITenantScoped, which is a decision visible on the entity rather than an
         // omission in a migration.
         using var scope = postgres.BuildServices().CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<DbrDbContext>();
 
         var unprotected = new List<string>();
 
-        foreach (var entityType in context.Model.GetEntityTypes())
+        foreach (var entityType in EveryMappedEntity(scope.ServiceProvider))
         {
-            if (entityType.GetTableName() is not { } tableName
-                || entityType.IsOwned()
-                || !typeof(Dbr.Domain.Tenancy.ITenantScoped).IsAssignableFrom(entityType.ClrType))
+            if (!typeof(ITenantScoped).IsAssignableFrom(entityType.EntityType.ClrType))
             {
                 continue;
             }
 
-            var isProtected = await postgres.QueryAsOwnerAsync<bool>(
-                $"SELECT coalesce((SELECT relrowsecurity FROM pg_class WHERE relname = '{tableName}'), false)");
-
-            if (!isProtected)
+            if (!await HasRowLevelSecurityAsync(entityType.Table))
             {
-                unprotected.Add($"{entityType.ClrType.Name} -> {tableName}");
+                unprotected.Add($"{entityType.EntityType.ClrType.Name} -> {entityType.Table}");
             }
         }
 
@@ -194,6 +183,56 @@ public class MigrationTests(PostgresFixture postgres)
             + "row-level security — so the only thing keeping one account's rows out of another's "
             + "is the application remembering to filter. Add a CALL app.enable_tenant_rls to the "
             + "migration: " + string.Join(", ", unprotected));
+    }
+
+    /// <summary>
+    /// Every entity either context maps, with the table it maps to.
+    /// </summary>
+    /// <remarks>
+    /// Both contexts, because the guards either side of this are only worth having if
+    /// they cover the store holding names and addresses as well as the one holding job
+    /// statuses. Checking the core model alone would have reported a clean bill on a
+    /// vault table that had never opted into the boundary at all.
+    /// </remarks>
+    private static IEnumerable<(IEntityType EntityType, TableName Table)> EveryMappedEntity(
+        IServiceProvider services)
+    {
+        DbContext[] contexts =
+        [
+            services.GetRequiredService<DbrDbContext>(),
+            services.GetRequiredService<VaultDbContext>(),
+        ];
+
+        foreach (var context in contexts)
+        {
+            foreach (var entityType in context.Model.GetEntityTypes())
+            {
+                if (entityType.GetTableName() is { } tableName && !entityType.IsOwned())
+                {
+                    yield return (entityType, new TableName(entityType.GetSchema() ?? "public", tableName));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Qualified by schema, since the two stores are told apart by nothing else while
+    /// they share a database — an unqualified name would answer for whichever table
+    /// Postgres happened to find first.
+    /// </summary>
+    private async Task<bool> HasRowLevelSecurityAsync(TableName table) =>
+        await postgres.QueryAsOwnerAsync<bool>(
+            $"""
+             SELECT coalesce((
+                 SELECT c.relrowsecurity
+                 FROM pg_class c
+                 JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = '{table.Schema}' AND c.relname = '{table.Name}'), false)
+             """);
+
+    private sealed record TableName(string Schema, string Name)
+    {
+        public override string ToString() => $"{Schema}.{Name}";
     }
 
     private sealed class ThrowawayLog : IUpgradeLog

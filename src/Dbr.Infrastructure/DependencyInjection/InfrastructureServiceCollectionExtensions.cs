@@ -6,6 +6,7 @@ using Dbr.Infrastructure.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Dbr.Infrastructure.DependencyInjection;
 
@@ -49,11 +50,7 @@ public static class InfrastructureServiceCollectionExtensions
                 "means supplying it yourself — see the README quickstart.");
         }
 
-        // Scoped to the unit of work — an API request, or one consumed message. Both
-        // registrations resolve to the same instance so whoever establishes the tenant
-        // writes to the object the interceptor reads.
-        services.AddScoped<TenantContext>();
-        services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
+        services.AddTenantContext();
         services.AddScoped<TenantSessionInterceptor>();
 
         // AddDbContext, not AddDbContextPool: pooling reuses context instances across
@@ -64,6 +61,24 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddDbContext<DbrDbContext>((sp, options) => options
             .UseDbr(connectionString)
             .AddInterceptors(sp.GetRequiredService<TenantSessionInterceptor>()));
+
+        return services;
+    }
+
+    /// <summary>
+    /// The current tenant, shared by every store.
+    /// </summary>
+    /// <remarks>
+    /// Scoped to the unit of work — an API request, or one consumed message. Both
+    /// registrations resolve to the same instance so whoever establishes the tenant
+    /// writes to the object every interceptor reads; a second copy would mean one store
+    /// acting for an account and the other for nobody. Added by whichever store is
+    /// registered first, which is why it is a <c>TryAdd</c>.
+    /// </remarks>
+    internal static IServiceCollection AddTenantContext(this IServiceCollection services)
+    {
+        services.TryAddScoped<TenantContext>();
+        services.TryAddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
 
         return services;
     }

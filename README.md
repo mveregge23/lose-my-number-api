@@ -20,6 +20,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Data persistence](#data-persistence)
 - [Database migrations](#database-migrations)
 - [The tenant boundary](#the-tenant-boundary)
+- [The vault: where identifying data lives](#the-vault-where-identifying-data-lives)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
@@ -225,12 +226,69 @@ CALL app.enable_tenant_rls('public.tenant');
 which enables and forces RLS, creates the `tenant_isolation` policy over both reads
 (`USING`) and writes (`WITH CHECK`), and grants `dbr_app` its DML. It refuses a table
 with no `tenant_id` column rather than creating a policy that fails later at query
-time.
+time. Two optional arguments cover the exceptions: a scoping column, for a table
+scoped by something other than `tenant_id`, and a role name, for the vault tables
+`dbr_app` is not allowed to touch at all:
+
+```sql
+CALL app.enable_tenant_rls('public.tenant', 'id');
+CALL app.enable_tenant_rls('vault.profile_identity', 'tenant_id', 'dbr_vault');
+```
 
 > **Not a defence against arbitrary SQL.** The application connects with a role that
 > could `RESET ROLE`. This boundary is aimed squarely at a missing tenant filter in
 > application code, and it makes that failure closed rather than silent. A deployment wanting the stronger property should connect as a dedicated
 > login role that is not a superuser; nothing here has to change for that to work.
+
+## The vault: where identifying data lives
+
+Names, addresses, contact details and dates of birth do not live alongside accounts, jobs and
+statuses. They live in a separate store — today the `vault` schema in the same database, later a
+database of its own — reached only through the profile service, and encrypted before they get
+there.
+
+**Two roles, each blind to the other's tables.** This is the part that makes the separation real
+rather than tidy:
+
+| Role | Can reach | Cannot reach |
+|---|---|---|
+| `dbr_app` | `public` — accounts, sessions, profiles' non-identifying half | the `vault` schema, at all |
+| `dbr_vault` | `vault` — encrypted identity rows | `public`, at all |
+
+Each connection assumes one of them on open, decided by which context opened it. A query issued
+over the core connection cannot read an encrypted name; a query issued over the vault connection
+cannot bring an email address alongside one. "Never joined into general query paths" is therefore
+something Postgres refuses rather than something reviewers have to notice — and it does not
+silently start working the day the two stores share a database again.
+
+That split is not a defence against a process that can run arbitrary SQL, for the same reason
+`dbr_app` isn't: both roles are reached with `SET ROLE` over one credential. The
+credential-level version is available whenever a deployment wants it, and costs one line —
+`ConnectionStrings__Vault` is already separate, so pointing it at another database, or at the
+same one as a different user, changes nothing else.
+
+**A profile is stored in two halves.** `public.privacy_profile` holds what routing needs: whose
+it is, what relationship the tenant claims to that identity, a coarse residency region like
+`US-CA`, and which attestation was accepted. `vault.profile_identity` holds the identity itself,
+encrypted. The region is deliberately in the first half and constrained to stay coarse —
+resolving which statute governs a removal happens on every request, and that must never require
+a decryption.
+
+**Envelope encryption, per profile.** Each profile row gets a data key from OpenBao; the fields
+are encrypted locally with it, and only the wrapped form of the key is stored. Each of the four
+field groups is encrypted separately, so a worker sent to fill in one broker's form can later be
+released a name without a date of birth being decrypted to do it. The ciphertext is bound to the
+tenant, the profile and the field it belongs to, which means a row copied to another profile — by
+a mistaken `UPDATE`, a partial backup restore — fails to decrypt rather than showing one person's
+identity under another's account.
+
+Destroying a tenant's wrapping key is what makes account deletion real: every data key it wrapped
+becomes permanently unreadable, including copies in a backup nobody can reach to delete, and no
+other tenant is affected.
+
+The API is the only service that gets a vault connection string. The Worker gets neither that nor
+key-manager credentials — a process that talks to third-party broker sites holding standing
+decryption rights is exactly what the design is arranged to avoid.
 
 ## Signing in: passkeys
 
@@ -484,9 +542,12 @@ dotnet run --project src/Dbr.Api
 
 The overlay is what publishes Postgres on `localhost:5432` and OpenBao on `localhost:8200`; the
 `Development` settings files point the API and Worker at both, and carry a development token
-signing key. Outside compose, and outside `Development`, both services need `ConnectionStrings__Core`,
-`Tokens__SigningKey` and `Bao__Address`/`Bao__Token` set — they refuse to start without any of them,
-rather than failing later on the first request that needs a database, a token, or a key.
+signing key. Outside compose, and outside `Development`, both services need
+`ConnectionStrings__Core`, `Tokens__SigningKey` and `Bao__Address`/`Bao__Token` set, and the API
+additionally needs `ConnectionStrings__Vault` — they refuse to start without any of them, rather
+than failing later on the first request that needs a database, a token, or a key. The Worker has
+no vault connection string and no key-manager credentials on purpose; see
+[the vault](#the-vault-where-identifying-data-lives).
 
 Every source file carries an SPDX header:
 

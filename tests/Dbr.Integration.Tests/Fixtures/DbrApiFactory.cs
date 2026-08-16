@@ -40,6 +40,10 @@ internal sealed class DbrApiFactory(string connectionString) : WebApplicationFac
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.UseSetting("ConnectionStrings:Core", connectionString);
+
+        // The same database, reached as the vault role — which is how compose supplies
+        // it too, and how the API distinguishes the two stores while they share one.
+        builder.UseSetting("ConnectionStrings:Vault", connectionString);
         builder.UseSetting("Tokens:SigningKey", PostgresFixture.TestSigningKey);
         builder.UseSetting("Passkeys:RelyingPartyId", "localhost");
         builder.UseSetting("Passkeys:Origins:0", Origin);

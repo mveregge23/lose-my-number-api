@@ -132,6 +132,13 @@ services:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ConnectionStrings__Core: >-
         Host=postgres;Port=5432;Database=${POSTGRES_DB:-dbr};Username=${POSTGRES_USER:-dbr};Password=${POSTGRES_PASSWORD:-dbr_dev_password}
+      # The vault store, reached separately even though it is a schema in the same
+      # database today. The connection acts as a role that can read the vault schema and
+      # nothing else, while the core connection acts as one that cannot read the vault at
+      # all — two roles over one credential. Pointing this line at another database is
+      # what moving the vault costs.
+      ConnectionStrings__Vault: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-dbr};Username=${POSTGRES_USER:-dbr};Password=${POSTGRES_PASSWORD:-dbr_dev_password}
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-dbr}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-dbr_dev_password}
@@ -174,11 +181,12 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-dbr}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-dbr_dev_password}
-      # No key-manager credentials, deliberately. Workers talk to third-party broker
-      # sites, and a token that can decrypt is a standing decryption right — exactly
-      # what a compromised worker should not be able to hand over. When a worker needs
-      # a tenant's fields it will ask for a short-lived, single-job release of only
-      # those fields, and the service holding the keys will decide whether to grant it.
+      # No key-manager credentials and no vault connection string, deliberately. Workers
+      # talk to third-party broker sites, and either of those is a standing decryption
+      # right — exactly what a compromised worker should not be able to hand over. When a
+      # worker needs a tenant's fields it will ask for a short-lived, single-job release
+      # of only those fields, and the service holding both will decide whether to grant
+      # it.
     depends_on:
       postgres:
         condition: service_healthy

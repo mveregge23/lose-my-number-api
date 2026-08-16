@@ -105,6 +105,14 @@ public sealed class PostgresFixture : IAsyncLifetime
                     $"ConnectionStrings:{InfrastructureServiceCollectionExtensions.CoreConnectionStringName}",
                     ConnectionString),
 
+                // Both stores live in this one container, as they do in compose. They
+                // are told apart by the role each connection assumes, not by the
+                // address, which is exactly the arrangement the boundary has to hold
+                // under.
+                new KeyValuePair<string, string?>(
+                    $"ConnectionStrings:{VaultServiceCollectionExtensions.VaultConnectionStringName}",
+                    ConnectionString),
+
                 // Token signing has no default and refuses a short key, so every test
                 // provider needs one. A fixed value rather than a random one per run:
                 // a test that mints a token in one provider and presents it to another
@@ -119,6 +127,11 @@ public sealed class PostgresFixture : IAsyncLifetime
             .AddDbrPersistence(configuration)
             .AddDbrPasskeys(configuration)
             .AddDbrSessions(configuration)
+            // The vault context, but not key management: resolving the context needs
+            // only a connection, and a provider that demanded a running OpenBao would
+            // make every database test pay for a container it does not use. Tests that
+            // encrypt build their own provider with both.
+            .AddDbrVault(configuration)
             .BuildServiceProvider();
     }
 
