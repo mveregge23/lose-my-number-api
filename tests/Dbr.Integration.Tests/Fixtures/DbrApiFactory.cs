@@ -26,7 +26,15 @@ namespace Dbr.Integration.Tests.Fixtures;
 /// bypassed it would boot happily on configuration the real thing refuses.
 /// </para>
 /// </remarks>
-internal sealed class DbrApiFactory(string connectionString) : WebApplicationFactory<Program>
+/// <param name="baoAddress">
+/// A real key manager for the tests that store an identity, and nothing listening for
+/// the ones that do not — see the note on the settings below.
+/// </param>
+internal sealed class DbrApiFactory(
+    string connectionString,
+    string? baoAddress = null,
+    string? baoToken = null)
+    : WebApplicationFactory<Program>
 {
     /// <summary>
     /// Where the browser is pretended to be. The relying party is the bare host of
@@ -48,15 +56,15 @@ internal sealed class DbrApiFactory(string connectionString) : WebApplicationFac
         builder.UseSetting("Passkeys:RelyingPartyId", "localhost");
         builder.UseSetting("Passkeys:Origins:0", Origin);
 
-        // A placeholder that satisfies startup validation and nothing more. These
-        // tests exercise the request pipeline, not encryption, so nothing here calls
-        // the key manager — and if something ever does, pointing at a port with
-        // nothing behind it makes that a loud failure rather than a quiet one.
+        // Without an address supplied, a placeholder that satisfies startup validation
+        // and nothing more: those tests exercise the request pipeline, not encryption,
+        // and pointing at a port with nothing behind it makes an unexpected call to the
+        // key manager a loud failure rather than a quiet one.
         //
         // Supplying it at all is the point: the composition root refuses to start
         // without it, and a test host that skipped that check would boot happily on
         // configuration the real thing rejects.
-        builder.UseSetting("Bao:Address", "http://127.0.0.1:1");
-        builder.UseSetting("Bao:Token", "not-a-usable-token");
+        builder.UseSetting("Bao:Address", baoAddress ?? "http://127.0.0.1:1");
+        builder.UseSetting("Bao:Token", baoToken ?? "not-a-usable-token");
     }
 }

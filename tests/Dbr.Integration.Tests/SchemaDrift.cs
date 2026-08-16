@@ -163,6 +163,11 @@ public static class SchemaDrift
         // pg_attribute with format_type rather than information_schema.columns: the
         // latter splits "character varying(50)" into a type and a length, which no
         // longer resembles what EF reports.
+        //
+        // System columns are excluded by attnum, except xmin: a model can legitimately
+        // map it as a concurrency token, and a table always has one. Without the
+        // exception the detector would report a missing column for a mapping that is
+        // correct — and a detector that cries wolf is one nobody believes the next time.
         await using var command = new NpgsqlCommand(
             """
             SELECT a.attname,
@@ -173,7 +178,7 @@ public static class SchemaDrift
             JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = @schema
               AND c.relname = @table
-              AND a.attnum > 0
+              AND (a.attnum > 0 OR a.attname = 'xmin')
               AND NOT a.attisdropped
             """,
             connection);

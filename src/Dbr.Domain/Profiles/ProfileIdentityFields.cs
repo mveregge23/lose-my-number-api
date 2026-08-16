@@ -11,13 +11,20 @@ namespace Dbr.Domain.Profiles;
 /// inside a single column and there is nothing for a sequence to number; it is what
 /// lets one address be removed later without the caller re-sending the rest.
 /// </remarks>
+/// <param name="Region">
+/// State, province or equivalent. Nullable because plenty of addresses have none, and an
+/// empty string standing in for that would be a value a later matcher has to know to
+/// ignore.
+/// </param>
+/// <param name="PostalCode">Nullable for the same reason: not every country issues one.</param>
+/// <param name="Country">Two-letter code, upper-cased, so it compares equal to catalog data.</param>
 public sealed record ProfileAddress(
     Guid Id,
     string Line1,
     string? Line2,
     string City,
-    string Region,
-    string PostalCode,
+    string? Region,
+    string? PostalCode,
     string Country);
 
 /// <summary>How to reach someone, as a broker would have it.</summary>
@@ -55,3 +62,18 @@ public sealed record ProfileIdentityFields(
     /// <summary>A profile that has been created but not filled in yet.</summary>
     public static ProfileIdentityFields Empty { get; } = new([], [], [], null);
 }
+
+/// <summary>
+/// Everything about an identity except its addresses.
+/// </summary>
+/// <remarks>
+/// The grouping is the one the API replaces in a single request. Addresses are left out
+/// because they are edited one at a time — a client adding an address it just learned
+/// about should not have to resend a name to do it, and an old address is often the only
+/// reason a listing is findable at all, so quietly dropping one because a request omitted
+/// it would be the expensive kind of mistake.
+/// </remarks>
+public sealed record ProfileDetails(
+    IReadOnlyList<string> Names,
+    DateOnly? DateOfBirth,
+    IReadOnlyList<ProfileContact> Contacts);

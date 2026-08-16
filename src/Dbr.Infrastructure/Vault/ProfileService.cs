@@ -23,6 +23,14 @@ namespace Dbr.Infrastructure.Vault;
 /// what holds the two together, and it is deliberately the only thing that does.
 /// </para>
 /// <para>
+/// <b>Every edit is a read-modify-write, and that is not an implementation detail.</b>
+/// The fields are encrypted as a whole under a key replaced on every save, so adding one
+/// address means decrypting the rest, changing the part that changed, and writing it all
+/// back. Two edits overlapping would not merge — so the row carries a concurrency token
+/// and the second writer is refused rather than quietly overwriting what the first
+/// added.
+/// </para>
+/// <para>
 /// <b>There is no transaction spanning the two stores, and there should not be.</b> They
 /// are separate connections today and separate databases eventually, so anything
 /// written to depend on their atomicity would be a promise that expires on the day of
@@ -66,9 +74,21 @@ public sealed class ProfileService(
         await keys.EnsureTenantKeyAsync(tenantId, cancellationToken).ConfigureAwait(false);
 
         var now = DateTimeOffset.UtcNow;
+        var encrypted = await EncryptAsync(tenantId, profileId, fields, cancellationToken)
+            .ConfigureAwait(false);
 
-        vault.Set<ProfileIdentity>().Add(
-            await EncryptAsync(tenantId, profileId, fields, now, cancellationToken).ConfigureAwait(false));
+        vault.Set<ProfileIdentity>().Add(new ProfileIdentity
+        {
+            PrivacyProfileId = profileId,
+            TenantId = tenantId,
+            WrappedDataKey = encrypted.WrappedDataKey,
+            EncryptedNames = encrypted.Names,
+            EncryptedAddresses = encrypted.Addresses,
+            EncryptedContacts = encrypted.Contacts,
+            EncryptedDob = encrypted.DateOfBirth,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
 
         await vault.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -108,18 +128,167 @@ public sealed class ProfileService(
     {
         var tenantId = RequireTenant();
 
+        var identity = await LoadAsync(profileId, cancellationToken).ConfigureAwait(false);
+
+        return identity is null
+            ? null
+            : await DecryptAsync(identity, tenantId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> ReplaceIdentityAsync(
+        Guid profileId,
+        ProfileIdentityFields fields,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+
+        var tenantId = RequireTenant();
+
+        var identity = await LoadAsync(profileId, cancellationToken).ConfigureAwait(false);
+
+        if (identity is null)
+        {
+            return false;
+        }
+
+        // Nothing is read first: every field is being replaced, so the old plaintext is
+        // not needed and the old key never has to be unwrapped.
+        await SaveAsync(identity, tenantId, fields, cancellationToken).ConfigureAwait(false);
+
+        return true;
+    }
+
+    public async Task<bool> ReplaceDetailsAsync(
+        Guid profileId,
+        ProfileDetails details,
+        string? residencyRegion,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+
+        var tenantId = RequireTenant();
+
+        var profile = await core.Set<PrivacyProfile>()
+            .FirstOrDefaultAsync(row => row.Id == profileId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var identity = await LoadAsync(profileId, cancellationToken).ConfigureAwait(false);
+
+        if (profile is null || identity is null)
+        {
+            return false;
+        }
+
+        // The addresses have to be decrypted in order to be written back unchanged.
+        // Unavoidable while the fields share a data key that is replaced on every save,
+        // and the alternative — leaving the old ciphertext in place beside newly
+        // encrypted fields — would mean a row whose columns are under two different
+        // keys, which is a state nothing else in the design has to reason about.
+        var current = await DecryptAsync(identity, tenantId, cancellationToken).ConfigureAwait(false);
+
+        await SaveAsync(
+            identity,
+            tenantId,
+            current with
+            {
+                Names = details.Names,
+                Contacts = details.Contacts,
+                DateOfBirth = details.DateOfBirth,
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        profile.ResidencyRegion = residencyRegion;
+        await core.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return true;
+    }
+
+    public async Task<AddAddressResult> AddAddressAsync(
+        Guid profileId,
+        ProfileAddress address,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+
+        var tenantId = RequireTenant();
+
+        var identity = await LoadAsync(profileId, cancellationToken).ConfigureAwait(false);
+
+        if (identity is null)
+        {
+            return AddAddressResult.Failed(AddAddressOutcome.ProfileNotFound);
+        }
+
+        var current = await DecryptAsync(identity, tenantId, cancellationToken).ConfigureAwait(false);
+
+        // The only limit that cannot be checked at the edge: how many are already there
+        // is a question only something holding the key can answer.
+        if (current.Addresses.Count >= ProfileLimits.MaxAddresses)
+        {
+            return AddAddressResult.Failed(AddAddressOutcome.TooMany);
+        }
+
+        // The id is assigned here rather than accepted from the caller.
+        var stored = address with { Id = Guid.NewGuid() };
+
+        await SaveAsync(
+            identity,
+            tenantId,
+            current with { Addresses = [.. current.Addresses, stored] },
+            cancellationToken).ConfigureAwait(false);
+
+        return new AddAddressResult(AddAddressOutcome.Added, stored);
+    }
+
+    public async Task<bool> RemoveAddressAsync(
+        Guid profileId,
+        Guid addressId,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = RequireTenant();
+
+        var identity = await LoadAsync(profileId, cancellationToken).ConfigureAwait(false);
+
+        if (identity is null)
+        {
+            return false;
+        }
+
+        var current = await DecryptAsync(identity, tenantId, cancellationToken).ConfigureAwait(false);
+        var remaining = current.Addresses.Where(existing => existing.Id != addressId).ToList();
+
+        if (remaining.Count == current.Addresses.Count)
+        {
+            // Nothing to remove, and nothing written: a save here would rotate the data
+            // key and rewrite every field to record that a request asked for something
+            // that was not there.
+            return false;
+        }
+
+        await SaveAsync(
+            identity,
+            tenantId,
+            current with { Addresses = remaining },
+            cancellationToken).ConfigureAwait(false);
+
+        return true;
+    }
+
+    private async Task<ProfileIdentity?> LoadAsync(Guid profileId, CancellationToken cancellationToken) =>
         // The vault store alone, without consulting the core row first. Both stores
         // enforce the tenant boundary independently, so asking twice would add a query
         // and no safety — and a read of somebody's identity fields that does not need
         // the operational store is a read that keeps working when the vault moves.
-        var identity = await vault.Set<ProfileIdentity>()
+        await vault.Set<ProfileIdentity>()
             .FirstOrDefaultAsync(row => row.PrivacyProfileId == profileId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (identity is null)
-        {
-            return null;
-        }
+    private async Task<ProfileIdentityFields> DecryptAsync(
+        ProfileIdentity identity,
+        Guid tenantId,
+        CancellationToken cancellationToken)
+    {
+        var profileId = identity.PrivacyProfileId;
 
         using var key = await keys
             .UnwrapDataKeyAsync(tenantId, identity.WrappedDataKey, cancellationToken)
@@ -134,48 +303,47 @@ public sealed class ProfileService(
                 : null);
     }
 
-    public async Task<bool> ReplaceIdentityAsync(
-        Guid profileId,
+    /// <exception cref="ProfileChangedException">
+    /// The row was written by somebody else after it was loaded here.
+    /// </exception>
+    private async Task SaveAsync(
+        ProfileIdentity identity,
+        Guid tenantId,
         ProfileIdentityFields fields,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(fields);
-
-        var tenantId = RequireTenant();
-
-        var existing = await vault.Set<ProfileIdentity>()
-            .FirstOrDefaultAsync(row => row.PrivacyProfileId == profileId, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (existing is null)
-        {
-            return false;
-        }
-
         // A new data key rather than the one already stored. Every field is being
         // rewritten anyway, so nothing needs the old key — and not unwrapping it means
         // the old plaintext key never exists in this process at all. Generating one
         // costs the same single call that unwrapping would have.
-        var replacement = await EncryptAsync(
-            tenantId, profileId, fields, existing.CreatedAt, cancellationToken).ConfigureAwait(false);
+        var encrypted = await EncryptAsync(tenantId, identity.PrivacyProfileId, fields, cancellationToken)
+            .ConfigureAwait(false);
 
-        existing.WrappedDataKey = replacement.WrappedDataKey;
-        existing.EncryptedNames = replacement.EncryptedNames;
-        existing.EncryptedAddresses = replacement.EncryptedAddresses;
-        existing.EncryptedContacts = replacement.EncryptedContacts;
-        existing.EncryptedDob = replacement.EncryptedDob;
-        existing.UpdatedAt = DateTimeOffset.UtcNow;
+        identity.WrappedDataKey = encrypted.WrappedDataKey;
+        identity.EncryptedNames = encrypted.Names;
+        identity.EncryptedAddresses = encrypted.Addresses;
+        identity.EncryptedContacts = encrypted.Contacts;
+        identity.EncryptedDob = encrypted.DateOfBirth;
+        identity.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await vault.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        return true;
+        try
+        {
+            await vault.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            // Translated rather than surfaced, because the caller is being told
+            // something about profiles, not about EF: read it again and reapply.
+            throw new ProfileChangedException(
+                "This profile was changed by another request. Read it again and reapply the change.",
+                exception);
+        }
     }
 
-    private async Task<ProfileIdentity> EncryptAsync(
+    private async Task<EncryptedIdentity> EncryptAsync(
         Guid tenantId,
         Guid profileId,
         ProfileIdentityFields fields,
-        DateTimeOffset createdAt,
         CancellationToken cancellationToken)
     {
         var generated = await keys.GenerateDataKeyAsync(tenantId, cancellationToken).ConfigureAwait(false);
@@ -185,20 +353,14 @@ public sealed class ProfileService(
         // dump contains something that decrypts an identity.
         using var key = generated.Key;
 
-        return new ProfileIdentity
-        {
-            PrivacyProfileId = profileId,
-            TenantId = tenantId,
-            WrappedDataKey = generated.Wrapped,
-            EncryptedNames = Write(key, tenantId, profileId, ProfileField.Names, fields.Names),
-            EncryptedAddresses = Write(key, tenantId, profileId, ProfileField.Addresses, fields.Addresses),
-            EncryptedContacts = Write(key, tenantId, profileId, ProfileField.Contacts, fields.Contacts),
-            EncryptedDob = fields.DateOfBirth is { } dob
+        return new EncryptedIdentity(
+            generated.Wrapped,
+            Write(key, tenantId, profileId, ProfileField.Names, fields.Names),
+            Write(key, tenantId, profileId, ProfileField.Addresses, fields.Addresses),
+            Write(key, tenantId, profileId, ProfileField.Contacts, fields.Contacts),
+            fields.DateOfBirth is { } dob
                 ? Write(key, tenantId, profileId, ProfileField.DateOfBirth, dob)
-                : null,
-            CreatedAt = createdAt,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
+                : null);
     }
 
     private static byte[] Write<TValue>(
@@ -240,4 +402,12 @@ public sealed class ProfileService(
             "The profile service was asked to work without a tenant. Identity fields "
             + "belong to exactly one account, and a scope that never established one has "
             + "no account to act for.");
+
+    /// <summary>One profile's fields, as columns, under a key that has just been minted.</summary>
+    private sealed record EncryptedIdentity(
+        string WrappedDataKey,
+        byte[] Names,
+        byte[] Addresses,
+        byte[] Contacts,
+        byte[]? DateOfBirth);
 }
