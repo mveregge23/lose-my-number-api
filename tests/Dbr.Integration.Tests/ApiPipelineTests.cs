@@ -37,10 +37,13 @@ public class ApiPipelineTests(PostgresFixture postgres) : IAsyncLifetime
 
     private HttpClient _client = null!;
 
+    private ApiClient _api = null!;
+
     public ValueTask InitializeAsync()
     {
         _factory = new DbrApiFactory(postgres.ConnectionString);
         _client = _factory.CreateClient();
+        _api = new ApiClient(_client);
 
         return ValueTask.CompletedTask;
     }
@@ -255,10 +258,9 @@ public class ApiPipelineTests(PostgresFixture postgres) : IAsyncLifetime
 
     private static string Unique() => $"api-{Guid.NewGuid():N}@example.com";
 
-    private static string AccessToken(JsonElement session) => session.GetProperty("accessToken").GetString()!;
+    private static string AccessToken(JsonElement session) => ApiClient.AccessToken(session);
 
-    private static byte[] UserHandle(JsonElement signup) =>
-        Guid.Parse(signup.GetProperty("tenantId").GetString()!).ToByteArray(bigEndian: true);
+    private static byte[] UserHandle(JsonElement signup) => ApiClient.UserHandle(signup);
 
     private TestAuthenticator NewAuthenticator()
     {
@@ -271,78 +273,15 @@ public class ApiPipelineTests(PostgresFixture postgres) : IAsyncLifetime
     private async Task<(HttpStatusCode Status, JsonElement Body)> PostAsync(
         string path,
         object payload,
-        string? accessToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, path)
-        {
-            Content = JsonContent.Create(payload),
-        };
+        string? accessToken) =>
+        await _api.PostAsync(path, payload, accessToken);
 
-        return await SendAsync(request, accessToken);
-    }
+    private async Task<(HttpStatusCode Status, JsonElement Body)> GetAsync(string path, string? accessToken) =>
+        await _api.GetAsync(path, accessToken);
 
-    private async Task<(HttpStatusCode Status, JsonElement Body)> GetAsync(string path, string? accessToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+    private async Task<JsonElement> SignUpAsync(string email, TestAuthenticator authenticator) =>
+        await _api.SignUpAsync(email, authenticator);
 
-        return await SendAsync(request, accessToken);
-    }
-
-    private async Task<(HttpStatusCode Status, JsonElement Body)> SendAsync(
-        HttpRequestMessage request,
-        string? accessToken)
-    {
-        if (accessToken is not null)
-        {
-            request.Headers.Add("Authorization", $"Bearer {accessToken}");
-        }
-
-        using var response = await _client.SendAsync(request, TestContext.Current.CancellationToken);
-        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-
-        return (
-            response.StatusCode,
-            body.Length == 0 ? default : JsonDocument.Parse(body).RootElement.Clone());
-    }
-
-    private async Task<JsonElement> SignUpAsync(string email, TestAuthenticator authenticator)
-    {
-        var (_, options) = await PostAsync("/api/v1/auth/register/options", new { email }, null);
-
-        var (status, session) = await PostAsync(
-            "/api/v1/auth/register",
-            new
-            {
-                ceremonyId = options.GetProperty("ceremonyId").GetString(),
-                credential = authenticator.Register(
-                    Fido2NetLib.CredentialCreateOptions.FromJson(options.GetProperty("publicKey").GetRawText()),
-                    DbrApiFactory.Origin),
-            },
-            null);
-
-        Assert.Equal(HttpStatusCode.OK, status);
-
-        return session;
-    }
-
-    private async Task<JsonElement> SignInAsync(TestAuthenticator authenticator, byte[] userHandle)
-    {
-        var (_, options) = await PostAsync("/api/v1/auth/login/options", new { }, null);
-
-        var (status, session) = await PostAsync(
-            "/api/v1/auth/login",
-            new
-            {
-                ceremonyId = options.GetProperty("ceremonyId").GetString(),
-                credential = authenticator.Assert(
-                    Fido2NetLib.AssertionOptions.FromJson(options.GetProperty("publicKey").GetRawText()),
-                    DbrApiFactory.Origin,
-                    userHandle),
-            },
-            null);
-
-        Assert.Equal(HttpStatusCode.OK, status);
-
-        return session;
-    }
+    private async Task<JsonElement> SignInAsync(TestAuthenticator authenticator, byte[] userHandle) =>
+        await _api.SignInAsync(authenticator, userHandle);
 }

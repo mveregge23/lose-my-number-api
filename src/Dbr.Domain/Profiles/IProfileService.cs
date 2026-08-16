@@ -64,4 +64,54 @@ public interface IProfileService
         Guid profileId,
         ProfileIdentityFields fields,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces everything about a profile except its addresses.
+    /// </summary>
+    /// <param name="residencyRegion">
+    /// Coarse region code, or <see langword="null"/> to clear it. Separate from
+    /// <paramref name="details"/> because it lands in the other store — it is the one
+    /// part of a profile that is not encrypted, so that resolving jurisdiction never
+    /// needs a decryption.
+    /// </param>
+    /// <returns><see langword="false"/> if there is no such profile for this tenant.</returns>
+    /// <exception cref="ProfileChangedException">
+    /// Somebody else wrote to this profile in between.
+    /// </exception>
+    Task<bool> ReplaceDetailsAsync(
+        Guid profileId,
+        ProfileDetails details,
+        string? residencyRegion,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds one address, leaving everything else on the profile alone.
+    /// </summary>
+    /// <param name="address">
+    /// Its <see cref="ProfileAddress.Id"/> is ignored and replaced. These live inside an
+    /// encrypted column with no unique index behind them, so an id chosen anywhere but
+    /// here is an id that can silently already be in use.
+    /// </param>
+    /// <exception cref="ProfileChangedException">
+    /// Somebody else wrote to this profile in between.
+    /// </exception>
+    Task<AddAddressResult> AddAddressAsync(
+        Guid profileId,
+        ProfileAddress address,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes one address by id.
+    /// </summary>
+    /// <returns>
+    /// <see langword="false"/> if the profile or the address is not there — which are
+    /// the same answer, since an address id means nothing outside the profile holding it.
+    /// </returns>
+    /// <exception cref="ProfileChangedException">
+    /// Somebody else wrote to this profile in between.
+    /// </exception>
+    Task<bool> RemoveAddressAsync(
+        Guid profileId,
+        Guid addressId,
+        CancellationToken cancellationToken);
 }

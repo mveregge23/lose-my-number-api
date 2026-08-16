@@ -253,6 +253,101 @@ public class ProfileVaultTests(PostgresFixture postgres, OpenBaoFixture openBao)
     }
 
     [Fact]
+    public async Task An_edit_that_started_from_a_stale_read_is_refused_rather_than_applied()
+    {
+        // The failure this exists to prevent: every change rewrites all four fields
+        // under a new key, so two overlapping edits cannot merge — the second would
+        // write what it read and take the first's address with it, silently.
+        await using var services = BuildServices();
+        var tenantId = await NewAccountAsync(services);
+
+        var profile = await WithProfileServiceAsync(services, tenantId, service =>
+            service.CreateAsync(ProfileRelationship.Self, "US-CA", "2026-06-01", Fields, Token));
+
+        using var slow = PostgresFixture.ScopeFor(services, tenantId);
+        using var quick = PostgresFixture.ScopeFor(services, tenantId);
+
+        var slowService = slow.ServiceProvider.GetRequiredService<IProfileService>();
+        var quickService = quick.ServiceProvider.GetRequiredService<IProfileService>();
+
+        // The slow editor reads the profile and holds it while somebody else finishes.
+        await slowService.ReadIdentityAsync(profile.Id, Token);
+
+        var quickResult = await quickService.AddAddressAsync(profile.Id, NewAddress("9 Elm Row"), Token);
+        Assert.Equal(AddAddressOutcome.Added, quickResult.Outcome);
+
+        await Assert.ThrowsAsync<ProfileChangedException>(() =>
+            slowService.AddAddressAsync(profile.Id, NewAddress("4 Beech Way"), Token));
+
+        // And what the quick one wrote is still there, which is the whole point of
+        // refusing the other.
+        var read = await WithProfileServiceAsync(services, tenantId, service =>
+            service.ReadIdentityAsync(profile.Id, Token));
+
+        Assert.NotNull(read);
+        Assert.Contains(read.Addresses, address => address.Line1 == "9 Elm Row");
+        Assert.DoesNotContain(read.Addresses, address => address.Line1 == "4 Beech Way");
+    }
+
+    [Fact]
+    public async Task Removing_an_address_that_is_not_there_writes_nothing_at_all()
+    {
+        // A save would rotate the data key and rewrite every field to record that
+        // somebody asked for something that was not there. Cheap to avoid, and it keeps
+        // "the key changed" meaning "the data changed".
+        await using var services = BuildServices();
+        var tenantId = await NewAccountAsync(services);
+
+        var profile = await WithProfileServiceAsync(services, tenantId, service =>
+            service.CreateAsync(ProfileRelationship.Self, "US-CA", "2026-06-01", Fields, Token));
+
+        var before = await ReadStoredBytesAsync(profile.Id);
+
+        Assert.False(await WithProfileServiceAsync(services, tenantId, service =>
+            service.RemoveAddressAsync(profile.Id, Guid.NewGuid(), Token)));
+
+        var after = await ReadStoredBytesAsync(profile.Id);
+
+        Assert.Equal(before.WrappedDataKey, after.WrappedDataKey);
+        Assert.Equal(before.Names, after.Names);
+    }
+
+    [Fact]
+    public async Task Replacing_the_details_writes_to_both_stores_and_leaves_the_addresses_alone()
+    {
+        await using var services = BuildServices();
+        var tenantId = await NewAccountAsync(services);
+
+        var profile = await WithProfileServiceAsync(services, tenantId, service =>
+            service.CreateAsync(ProfileRelationship.Self, null, "2026-06-01", Fields, Token));
+
+        Assert.True(await WithProfileServiceAsync(services, tenantId, service =>
+            service.ReplaceDetailsAsync(
+                profile.Id,
+                new ProfileDetails(["Alexandra Whitfield"], null, []),
+                "US-CA",
+                Token)));
+
+        var read = await WithProfileServiceAsync(services, tenantId, service =>
+            service.ReadIdentityAsync(profile.Id, Token));
+
+        Assert.NotNull(read);
+        Assert.Equal(["Alexandra Whitfield"], read.Names);
+        Assert.Empty(read.Contacts);
+        Assert.Null(read.DateOfBirth);
+
+        // Untouched by a call that did not mention them.
+        Assert.Equal(Fields.Addresses, read.Addresses);
+
+        // The region is the half that lands in the other store, in the clear, so that
+        // resolving jurisdiction never needs the key.
+        Assert.Equal(
+            "US-CA",
+            await postgres.QueryAsOwnerAsync<string>(
+                $"SELECT residency_region FROM public.privacy_profile WHERE id = '{profile.Id}'"));
+    }
+
+    [Fact]
     public async Task A_scope_acting_for_nobody_is_refused_before_it_reaches_the_database()
     {
         await using var services = BuildServices();
@@ -286,6 +381,9 @@ public class ProfileVaultTests(PostgresFixture postgres, OpenBaoFixture openBao)
         Assert.Equal(self.Id, found.Id);
         Assert.Equal(ProfileRelationship.Self, found.RelationshipType);
     }
+
+    private static ProfileAddress NewAddress(string line1) =>
+        new(Guid.Empty, line1, null, "Sacramento", "CA", "95814", "US");
 
     private ServiceProvider BuildServices()
     {

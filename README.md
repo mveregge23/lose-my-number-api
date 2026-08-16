@@ -290,6 +290,36 @@ The API is the only service that gets a vault connection string. The Worker gets
 key-manager credentials — a process that talks to third-party broker sites holding standing
 decryption rights is exactly what the design is arranged to avoid.
 
+### The routes over it
+
+All four require a bearer token, and none of them names an account or a profile id: `/profile` is
+the account's own, and there is exactly one.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/profile` | The identity, decrypted for its owner |
+| `PUT` | `/api/v1/profile` | Replace the names, date of birth, contacts and residency region |
+| `POST` | `/api/v1/profile/addresses` | Add an address, current or historical |
+| `DELETE` | `/api/v1/profile/addresses/{id}` | Remove one |
+
+**`PUT` does not touch addresses**, and that is deliberate rather than an omission. It replaces
+what it is sent — an omitted `names` is an empty one — so a client editing a phone number would
+otherwise erase every address it did not resend, and an address somebody lived at years ago is
+frequently the only reason a broker listing can be found at all. Addresses are edited one at a
+time instead.
+
+Two answers are worth knowing about in advance:
+
+- **`409 Conflict`** means the profile changed while you were editing it. Fields are encrypted as
+  a whole and rewritten under a fresh key on every change, so two overlapping edits cannot be
+  merged — the second would silently undo the first. Fetch it again and reapply.
+- **`404`** on `GET /api/v1/profile` means this account has no profile yet. That disappears once
+  signup creates it; accounts opened before then have none.
+
+What a profile may hold is capped — names, contacts and addresses each have a limit, and so do
+the field lengths. Ordinary tables get that from the schema; these are encrypted columns the
+database cannot read, so the limits live in the API and are the whole of the ceiling.
+
 ## Signing in: passkeys
 
 Accounts are opened and entered with a passkey. There is no password, and no step where you
