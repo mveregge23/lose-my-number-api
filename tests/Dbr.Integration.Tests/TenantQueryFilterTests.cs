@@ -153,8 +153,10 @@ public class TenantQueryFilterTests(PostgresFixture postgres) : IAsyncLifetime
 
         // UseDbr without AddInterceptors: no SET ROLE, so this connects as the
         // container's owning superuser and the policies do not apply.
+        // Options typed to DbrDbContext, which is what its constructor takes now that a
+        // second context exists; EF accepts them for a subclass of it.
         return new FilterProbeContext(
-            new DbContextOptionsBuilder<FilterProbeContext>()
+            new DbContextOptionsBuilder<DbrDbContext>()
                 .UseDbr(postgres.ConnectionString)
                 .Options,
             tenantContext,
@@ -166,7 +168,7 @@ public class TenantQueryFilterTests(PostgresFixture postgres) : IAsyncLifetime
     /// filters under test are the ones production applies rather than a copy.
     /// </summary>
     private sealed class FilterProbeContext(
-        DbContextOptions options,
+        DbContextOptions<DbrDbContext> options,
         ITenantContext tenantContext,
         string tableName) : DbrDbContext(options, tenantContext)
     {
