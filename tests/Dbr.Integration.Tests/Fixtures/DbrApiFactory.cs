@@ -43,6 +43,12 @@ internal sealed class DbrApiFactory(
     /// </summary>
     public const string Origin = "https://localhost";
 
+    /// <summary>
+    /// The terms this test instance serves. Signup refuses any other version, so a test
+    /// that accepts something else is testing the refusal.
+    /// </summary>
+    public const string TermsVersion = "2026-06-01";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -55,6 +61,7 @@ internal sealed class DbrApiFactory(
         builder.UseSetting("Tokens:SigningKey", PostgresFixture.TestSigningKey);
         builder.UseSetting("Passkeys:RelyingPartyId", "localhost");
         builder.UseSetting("Passkeys:Origins:0", Origin);
+        builder.UseSetting("Terms:CurrentVersion", TermsVersion);
 
         // Without an address supplied, a placeholder that satisfies startup validation
         // and nothing more: those tests exercise the request pipeline, not encryption,

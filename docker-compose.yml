@@ -158,6 +158,12 @@ services:
       # development value like the passwords above and belongs in the same table of
       # things a real deployment has to replace.
       Tokens__SigningKey: ${TOKEN_SIGNING_KEY:-dbr_dev_token_signing_key_do_not_use_in_production}
+      # Which terms an account is opened under. Signup records it against the profile
+      # it creates, so it is the answer to "what did this person actually agree to"
+      # long after the wording has moved on. Set it to whatever names the text this
+      # instance serves; the API refuses to start without it, because an acceptance
+      # recorded against nothing is worse than no record at all.
+      Terms__CurrentVersion: ${TERMS_VERSION:-2026-06-01}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:

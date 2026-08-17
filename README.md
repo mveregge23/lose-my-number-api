@@ -313,8 +313,8 @@ Two answers are worth knowing about in advance:
 - **`409 Conflict`** means the profile changed while you were editing it. Fields are encrypted as
   a whole and rewritten under a fresh key on every change, so two overlapping edits cannot be
   merged — the second would silently undo the first. Fetch it again and reapply.
-- **`404`** on `GET /api/v1/profile` means this account has no profile yet. That disappears once
-  signup creates it; accounts opened before then have none.
+- **`404`** on `GET /api/v1/profile` means this account has no profile. Signup creates one, so no
+  current account is in that state — only accounts opened before it did.
 
 What a profile may hold is capped — names, contacts and addresses each have a limit, and so do
 the field lengths. Ordinary tables get that from the schema; these are encrypted columns the
@@ -340,6 +340,24 @@ Signing up is the same shape, with an address so the passkey has a label in your
 `POST /api/v1/auth/register/options` with `{"email": "..."}`, then `POST /api/v1/auth/register`
 with what the browser produced. **Nothing is written until the authenticator answers** — an
 abandoned signup leaves no account behind.
+
+The registration challenge also comes back with a `termsVersion`, and finishing the signup means
+sending it back as `acceptedTermsVersion` alongside the credential. Display that version's text;
+what the client echoes is compared against what this instance is currently serving and refused
+with `409` if it has moved on, so what gets recorded is what somebody was shown rather than what
+a client claimed. A refusal does not spend the registration — accept the current version and
+finish the same ceremony.
+
+**Signing up creates the account's own profile.** There is no separate step, and `GET
+/api/v1/profile` works on a brand-new account — it comes back empty, waiting to be filled in.
+This is the common case the whole design is pointed at: somebody removing their own data attests
+to that by accepting the terms, which is exactly the claim being made. Managing an identity that
+is not your own is the deliberately higher-friction path, and is not built yet.
+
+If the key manager cannot be reached, the signup fails and **takes the half-made account with
+it** — the address stays free and you can try again. The alternative would be an account that
+exists, cannot be signed up for a second time, and can never have the profile every feature
+reads from.
 
 Two consequences worth knowing before you deploy this:
 
@@ -574,8 +592,9 @@ The overlay is what publishes Postgres on `localhost:5432` and OpenBao on `local
 `Development` settings files point the API and Worker at both, and carry a development token
 signing key. Outside compose, and outside `Development`, both services need
 `ConnectionStrings__Core`, `Tokens__SigningKey` and `Bao__Address`/`Bao__Token` set, and the API
-additionally needs `ConnectionStrings__Vault` — they refuse to start without any of them, rather
-than failing later on the first request that needs a database, a token, or a key. The Worker has
+additionally needs `ConnectionStrings__Vault` and `Terms__CurrentVersion` — they refuse to start
+without any of them, rather than failing later on the first request that needs a database, a
+token, a key, or an account to open. The Worker has
 no vault connection string and no key-manager credentials on purpose; see
 [the vault](#the-vault-where-identifying-data-lives).
 
@@ -621,6 +640,7 @@ If you are only running this locally, you can stop reading here. If you are depl
 | Migrations run automatically at startup | One machine, one instance | An explicit pre-deploy step — multiple replicas racing to migrate is exactly what that avoids |
 | Passkey relying party is `localhost` over plain HTTP | It is the only origin your browser will reach | Your real domain over HTTPS. Browsers refuse WebAuthn on any non-`localhost` origin without it, so this is enforced whether you set it or not |
 | Token signing key `dbr_dev_token_signing_key_...`, committed to the repo | Nobody else can reach the API to use it | A real secret. Whoever knows this key can mint an access token for any account, so it is the single most important value in this table |
+| Terms version `2026-06-01`, naming no document that exists | Nobody is agreeing to anything on your laptop | The version of terms you actually serve. Every account records this as what its owner accepted, and a version naming nothing makes that record worthless — the one row here that is not a secret and still has to change |
 
 One gap is worth naming rather than leaving to be discovered: **completing a signup for an
 address that already has an account answers `409`**, which tells the caller that address is
