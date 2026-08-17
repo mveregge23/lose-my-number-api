@@ -201,8 +201,11 @@ public static class ProfileEndpoints
     }
 
     /// <remarks>
-    /// Reachable only until signup creates the profile itself, which is the story after
-    /// this one. Until then an account opened before this existed has none.
+    /// Signup creates the profile, so a current account always has one and this is
+    /// unreachable for anything opened since. It stays because accounts opened before
+    /// that did not get one, and because answering 404 is better than an empty profile
+    /// that reads as new — the difference decides whether a client offers to create or
+    /// to edit.
     /// </remarks>
     private static IResult NoProfile() =>
         Results.Problem(

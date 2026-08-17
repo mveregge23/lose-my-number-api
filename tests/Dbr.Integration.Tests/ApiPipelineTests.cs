@@ -28,8 +28,8 @@ namespace Dbr.Integration.Tests;
 /// having parsed it.
 /// </para>
 /// </remarks>
-[Collection(PostgresCollection.Name)]
-public class ApiPipelineTests(PostgresFixture postgres) : IAsyncLifetime
+[Collection(ProfileVaultCollection.Name)]
+public class ApiPipelineTests(PostgresFixture postgres, OpenBaoFixture openBao) : IAsyncLifetime
 {
     private readonly List<TestAuthenticator> _authenticators = [];
 
@@ -41,7 +41,11 @@ public class ApiPipelineTests(PostgresFixture postgres) : IAsyncLifetime
 
     public ValueTask InitializeAsync()
     {
-        _factory = new DbrApiFactory(postgres.ConnectionString);
+        // A real key manager, because opening an account now creates its profile and a
+        // profile is encrypted before it is stored. Signing up is the first thing almost
+        // every test here does, so there is no version of these tests that does not need
+        // one.
+        _factory = new DbrApiFactory(postgres.ConnectionString, openBao.Address, openBao.Token);
         _client = _factory.CreateClient();
         _api = new ApiClient(_client);
 
@@ -59,7 +63,8 @@ public class ApiPipelineTests(PostgresFixture postgres) : IAsyncLifetime
         }
 
         await postgres.ExecuteAsOwnerAsync(
-            "DELETE FROM public.tenant; DELETE FROM public.passkey_ceremony;");
+            "DELETE FROM vault.profile_identity; DELETE FROM public.privacy_profile; "
+            + "DELETE FROM public.tenant; DELETE FROM public.passkey_ceremony;");
     }
 
     [Fact]

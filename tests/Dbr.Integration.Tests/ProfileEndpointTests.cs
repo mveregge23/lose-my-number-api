@@ -82,10 +82,17 @@ public class ProfileEndpointTests(PostgresFixture postgres, OpenBaoFixture openB
     [Fact]
     public async Task An_account_with_no_profile_is_told_so_rather_than_shown_an_empty_one()
     {
-        // Reachable only until signup creates the profile itself. An empty profile here
-        // would be indistinguishable from a real one somebody had not filled in, and the
-        // difference decides whether a client offers to create or to edit.
+        // No signup produces this state any more, so the profile is taken away again to
+        // reach it: accounts opened before signup created one are still out there. An
+        // empty profile here would be indistinguishable from a real one somebody had not
+        // filled in, and the difference decides whether a client offers to create or to
+        // edit.
         var session = await SignUpAsync();
+        var tenantId = ApiClient.TenantId(session);
+
+        await postgres.ExecuteAsOwnerAsync(
+            $"DELETE FROM vault.profile_identity WHERE tenant_id = '{tenantId}'; "
+            + $"DELETE FROM public.privacy_profile WHERE tenant_id = '{tenantId}';");
 
         var (status, _) = await _api.GetAsync("/api/v1/profile", ApiClient.AccessToken(session));
 
@@ -281,28 +288,16 @@ public class ProfileEndpointTests(PostgresFixture postgres, OpenBaoFixture openB
     }
 
     /// <summary>
-    /// An account whose self profile exists, created through the service the way signup
-    /// is about to.
+    /// An account and the profile signup gave it.
     /// </summary>
     /// <remarks>
-    /// Signup does not create it yet — that is the next story — so these tests stand in
-    /// for it rather than testing against a state no account will be in for long.
+    /// Nothing arranges the profile any more: it comes with the account, which is what
+    /// these tests are meant to run against.
     /// </remarks>
     private async Task<(string AccessToken, Guid TenantId)> AccountWithProfileAsync()
     {
         var session = await SignUpAsync();
-        var tenantId = ApiClient.TenantId(session);
 
-        using var scope = _factory.Services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<TenantContext>().SetTenant(tenantId);
-
-        await scope.ServiceProvider.GetRequiredService<IProfileService>().CreateAsync(
-            ProfileRelationship.Self,
-            residencyRegion: null,
-            Attestation,
-            ProfileIdentityFields.Empty,
-            Token);
-
-        return (ApiClient.AccessToken(session), tenantId);
+        return (ApiClient.AccessToken(session), ApiClient.TenantId(session));
     }
 }

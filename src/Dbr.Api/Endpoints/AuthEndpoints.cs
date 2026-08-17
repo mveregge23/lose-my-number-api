@@ -16,9 +16,10 @@ namespace Dbr.Api.Endpoints;
 /// trips: <c>/options</c> issues a challenge, and the route it hangs off completes it.
 /// </para>
 /// <para>
-/// Only signup registers a passkey today. Adding a second passkey to an account that
-/// already exists needs the request to prove which account it is for, and there is no
-/// way to prove that yet — tokens are not issued here. It arrives with them.
+/// Signing up is the only thing here that creates anything. Adding a second passkey to
+/// an account that already exists lives under <c>/account/passkeys</c> instead, because
+/// that request has to prove which account it is for and these routes are reached
+/// without proving anything.
 /// </para>
 /// </remarks>
 public static class AuthEndpoints
@@ -43,9 +44,16 @@ public static class AuthEndpoints
     /// Starts a signup. Answers the same way whether or not the address is already
     /// registered — finding that out is what completing the ceremony is for.
     /// </summary>
+    /// <remarks>
+    /// The terms version comes back with the challenge because the client has to show
+    /// that text and quote the version back when it finishes. Serving it here rather
+    /// than from a route of its own keeps the pair together: whatever the client
+    /// displays alongside this challenge is what the account will be attested under.
+    /// </remarks>
     private static async Task<IResult> BeginRegistrationAsync(
         BeginRegistrationRequest request,
         PasskeyService passkeys,
+        TermsOptions terms,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Email))
@@ -58,18 +66,24 @@ public static class AuthEndpoints
 
         var ceremony = await passkeys.BeginSignupAsync(request.Email.Trim(), cancellationToken);
 
-        return CeremonyResponse(ceremony.CeremonyId, ceremony.Options.ToJson());
+        return CeremonyResponse(ceremony.CeremonyId, ceremony.Options.ToJson(), terms.CurrentVersion);
     }
 
+    /// <summary>
+    /// Finishes a signup: the account, its first passkey, and the profile it exists to
+    /// act on.
+    /// </summary>
     private static async Task<IResult> CompleteRegistrationAsync(
         CompleteRegistrationRequest request,
-        PasskeyService passkeys,
+        SignupService signup,
         SessionService sessions,
+        TermsOptions terms,
         CancellationToken cancellationToken)
     {
-        var result = await passkeys.CompleteSignupAsync(
+        var result = await signup.CompleteAsync(
             request.CeremonyId,
             request.Credential,
+            request.AcceptedTermsVersion,
             cancellationToken);
 
         return result.Outcome switch
@@ -77,20 +91,27 @@ public static class AuthEndpoints
             // Signing up signs you in. The passkey has just been used to prove the
             // account belongs to whoever registered it, so asking them to prove it
             // again immediately would be ceremony rather than security.
-            PasskeySignupOutcome.Created => Results.Ok(SessionResponse(
+            SignupOutcome.Created => Results.Ok(SessionResponse(
                 result.TenantId,
                 await sessions.StartAsync(result.TenantId, cancellationToken))),
 
-            PasskeySignupOutcome.CeremonyUnusable => Results.Problem(
+            SignupOutcome.CeremonyUnusable => Results.Problem(
                 "That registration has expired or was already completed. Start again.",
                 statusCode: StatusCodes.Status400BadRequest),
 
-            PasskeySignupOutcome.AttestationRejected => Results.Problem(
+            SignupOutcome.AttestationRejected => Results.Problem(
                 "The authenticator's response could not be verified.",
                 statusCode: StatusCodes.Status400BadRequest),
 
-            PasskeySignupOutcome.AddressAlreadyRegistered => Results.Problem(
+            SignupOutcome.AddressAlreadyRegistered => Results.Problem(
                 "That address already has an account. Sign in with the passkey you registered.",
+                statusCode: StatusCodes.Status409Conflict),
+
+            // The registration itself is still good, so this says what to do rather than
+            // just refusing: show the current terms and send the same ceremony back.
+            SignupOutcome.TermsOutOfDate => Results.Problem(
+                $"These terms are no longer the current ones. Show version {terms.CurrentVersion} "
+                + "and accept that instead; the registration you started is still usable.",
                 statusCode: StatusCodes.Status409Conflict),
 
             _ => throw new InvalidOperationException($"Unhandled signup outcome {result.Outcome}."),
@@ -232,14 +253,26 @@ public static class AuthEndpoints
     /// default serialiser would emit standard base64 — which a browser rejects, on a
     /// path that needs an authenticator to reach.
     /// </remarks>
-    private static IResult CeremonyResponse(Guid ceremonyId, string optionsJson) =>
-        Results.Text(
-            new JsonObject
-            {
-                ["ceremonyId"] = ceremonyId.ToString(),
-                ["publicKey"] = JsonNode.Parse(optionsJson),
-            }.ToJsonString(),
-            "application/json");
+    private static IResult CeremonyResponse(
+        Guid ceremonyId,
+        string optionsJson,
+        string? termsVersion = null)
+    {
+        var body = new JsonObject
+        {
+            ["ceremonyId"] = ceremonyId.ToString(),
+            ["publicKey"] = JsonNode.Parse(optionsJson),
+        };
+
+        // Absent on a sign-in, where there is nothing to agree to and naming a version
+        // would invite a client to collect an acceptance nobody asked for.
+        if (termsVersion is not null)
+        {
+            body["termsVersion"] = termsVersion;
+        }
+
+        return Results.Text(body.ToJsonString(), "application/json");
+    }
 }
 
 /// <param name="Email">Where the account is reached, and how the passkey is labelled.</param>
@@ -247,9 +280,15 @@ public sealed record BeginRegistrationRequest(string Email);
 
 /// <param name="CeremonyId">The handle returned by <c>/register/options</c>.</param>
 /// <param name="Credential">What <c>navigator.credentials.create()</c> produced.</param>
+/// <param name="AcceptedTermsVersion">
+/// The <c>termsVersion</c> from that same response, echoed back to say the person was
+/// shown it and agreed. It becomes the attestation on the profile this creates, which is
+/// why signup refuses a version that is not the current one rather than recording it.
+/// </param>
 public sealed record CompleteRegistrationRequest(
     Guid CeremonyId,
-    AuthenticatorAttestationRawResponse Credential);
+    AuthenticatorAttestationRawResponse Credential,
+    string? AcceptedTermsVersion);
 
 /// <param name="CeremonyId">The handle returned by <c>/login/options</c>.</param>
 /// <param name="Credential">What <c>navigator.credentials.get()</c> produced.</param>

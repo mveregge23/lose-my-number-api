@@ -45,15 +45,45 @@ internal sealed class ApiClient(HttpClient client)
 
     /// <summary>
     /// Opens an account and signs it in, the way a browser would: a challenge, a real
-    /// signature over it, and the session that comes back.
+    /// signature over it, the terms it was offered accepted, and the session that comes
+    /// back.
     /// </summary>
+    /// <remarks>
+    /// The version accepted is the one the challenge came with, rather than a constant
+    /// repeated here — that is what a client does, and it means a test does not quietly
+    /// keep passing a version the server stopped serving.
+    /// </remarks>
     public async Task<JsonElement> SignUpAsync(string email, TestAuthenticator authenticator)
     {
         ArgumentNullException.ThrowIfNull(authenticator);
 
         var (_, options) = await PostAsync("/api/v1/auth/register/options", new { email }, null);
 
-        var (status, session) = await PostAsync(
+        var (status, session) = await CompleteSignUpAsync(
+            options,
+            authenticator,
+            options.GetProperty("termsVersion").GetString());
+
+        Assert.Equal(HttpStatusCode.OK, status);
+
+        return session;
+    }
+
+    /// <summary>
+    /// Answers a registration challenge, accepting whichever terms version is given.
+    /// </summary>
+    /// <remarks>
+    /// Split out so a test can finish a real ceremony while accepting the wrong terms —
+    /// the one case where what a client sends and what it was offered differ.
+    /// </remarks>
+    public async Task<(HttpStatusCode Status, JsonElement Body)> CompleteSignUpAsync(
+        JsonElement options,
+        TestAuthenticator authenticator,
+        string? acceptedTermsVersion)
+    {
+        ArgumentNullException.ThrowIfNull(authenticator);
+
+        return await PostAsync(
             "/api/v1/auth/register",
             new
             {
@@ -61,12 +91,17 @@ internal sealed class ApiClient(HttpClient client)
                 credential = authenticator.Register(
                     CredentialCreateOptions.FromJson(options.GetProperty("publicKey").GetRawText()),
                     DbrApiFactory.Origin),
+                acceptedTermsVersion,
             },
             null);
+    }
 
-        Assert.Equal(HttpStatusCode.OK, status);
+    /// <summary>Starts a signup without finishing it.</summary>
+    public async Task<JsonElement> BeginSignUpAsync(string email)
+    {
+        var (_, options) = await PostAsync("/api/v1/auth/register/options", new { email }, null);
 
-        return session;
+        return options;
     }
 
     public async Task<JsonElement> SignInAsync(TestAuthenticator authenticator, byte[] userHandle)
@@ -117,9 +152,16 @@ internal sealed class ApiClient(HttpClient client)
             using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
             var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
+            // Only what claims to be JSON is parsed. An unhandled exception answers with
+            // the developer exception page, which is a document about a failure rather
+            // than a failed request's document — a test asserting on the status would
+            // otherwise fail while parsing it, and say nothing about what went wrong.
+            var isJson = response.Content.Headers.ContentType?.MediaType?
+                .Contains("json", StringComparison.OrdinalIgnoreCase) ?? false;
+
             return (
                 response.StatusCode,
-                body.Length == 0 ? default : JsonDocument.Parse(body).RootElement.Clone());
+                body.Length == 0 || !isJson ? default : JsonDocument.Parse(body).RootElement.Clone());
         }
     }
 }
