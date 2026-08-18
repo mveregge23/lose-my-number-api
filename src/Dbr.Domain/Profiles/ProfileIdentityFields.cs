@@ -25,7 +25,11 @@ public sealed record ProfileAddress(
     string City,
     string? Region,
     string? PostalCode,
-    string Country);
+    string Country)
+{
+    /// <inheritdoc cref="ProfileIdentityFields.ToString"/>
+    public override string ToString() => $"ProfileAddress {{ Id = {Id}, [withheld] }}";
+}
 
 /// <summary>How to reach someone, as a broker would have it.</summary>
 public enum ProfileContactKind
@@ -35,7 +39,11 @@ public enum ProfileContactKind
 }
 
 /// <summary>One contact point on a profile.</summary>
-public sealed record ProfileContact(Guid Id, ProfileContactKind Kind, string Value);
+public sealed record ProfileContact(Guid Id, ProfileContactKind Kind, string Value)
+{
+    /// <inheritdoc cref="ProfileIdentityFields.ToString"/>
+    public override string ToString() => $"ProfileContact {{ Id = {Id}, Kind = {Kind}, [withheld] }}";
+}
 
 /// <summary>
 /// Everything identifying about one profile, in the clear.
@@ -61,6 +69,26 @@ public sealed record ProfileIdentityFields(
 {
     /// <summary>A profile that has been created but not filled in yet.</summary>
     public static ProfileIdentityFields Empty { get; } = new([], [], [], null);
+
+    /// <summary>
+    /// Names the type and withholds the contents.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A record's generated <c>ToString</c> prints every member it has, which makes any
+    /// of these one string interpolation away from being somebody's identity in plain
+    /// text — in a log line, an exception message, or a queue message. Overriding it
+    /// puts the refusal on the type, where nothing has to remember to apply it.
+    /// </para>
+    /// <para>
+    /// The redaction in the logging pipeline is the same rule enforced a layer out, and
+    /// it is not a substitute for this one: it only sees values that reached a log event
+    /// as properties, and a string built before the call arrives already spent.
+    /// </para>
+    /// </remarks>
+    public override string ToString() =>
+        $"ProfileIdentityFields {{ Names = {Names.Count}, Addresses = {Addresses.Count}, "
+        + $"Contacts = {Contacts.Count}, [withheld] }}";
 }
 
 /// <summary>
@@ -76,4 +104,9 @@ public sealed record ProfileIdentityFields(
 public sealed record ProfileDetails(
     IReadOnlyList<string> Names,
     DateOnly? DateOfBirth,
-    IReadOnlyList<ProfileContact> Contacts);
+    IReadOnlyList<ProfileContact> Contacts)
+{
+    /// <inheritdoc cref="ProfileIdentityFields.ToString"/>
+    public override string ToString() =>
+        $"ProfileDetails {{ Names = {Names.Count}, Contacts = {Contacts.Count}, [withheld] }}";
+}

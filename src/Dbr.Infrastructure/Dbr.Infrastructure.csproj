@@ -49,6 +49,29 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          client because it recycles handlers on a schedule; a long-lived HttpClient
          pins DNS forever, which matters for a service every write depends on. -->
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.4" />
+    <!-- Logging, here rather than in each host, because the redaction that makes a log
+         line safe to write is a property of this application and not of whichever
+         process is writing it. Both composition roots configure logging through one
+         call for the same reason they open a database connection through one: a host
+         that assembled its own pipeline could assemble one without the redactor, and
+         nothing at the call site would look wrong.
+
+         Serilog rather than the built-in logger because the redaction step needs to see
+         a log event as structured properties and rewrite them before any sink runs.
+         Microsoft.Extensions.Logging has no equivalent seam — its filters decide
+         whether an event is written, not what it contains. -->
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <!-- One JSON object per line for anything that is not a developer's terminal. The
+         log stream is going to an OTLP sink later, and a formatter that has already
+         separated the properties from the prose is what makes the redacted values
+         still legible after that hop. -->
+    <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <!-- So an operator keeps the level control they had before this, through settings
+         rather than a rebuild. Configuration is read first and the redactor is attached
+         afterwards, which is what stops a configured pipeline from being one without
+         it. -->
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
   </ItemGroup>
 
   <ItemGroup>

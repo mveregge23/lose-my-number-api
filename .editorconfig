@@ -59,3 +59,12 @@ csharp_space_between_method_call_parameter_list_parentheses = false
 # Analyzer severities are the build's business, not the formatter's — CI builds
 # with -warnaserror, so anything the compiler or an analyzer reports fails there
 # rather than being silently reformatted here.
+
+# A log message built by string interpolation reaches the logging pipeline as a
+# finished string with no properties in it. The PII redaction step works by
+# recognising and replacing properties, so there is nothing there for it to find:
+# an address interpolated into a message goes straight to the sink. Every other
+# way of writing the same call is safe, so this is refused at build time rather
+# than left to review — off by default, on here, and an error rather than a
+# warning because a warning is a thing you can accumulate.
+dotnet_diagnostic.CA2254.severity = error

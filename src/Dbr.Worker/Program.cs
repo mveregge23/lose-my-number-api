@@ -6,6 +6,11 @@ using Dbr.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+// The same pipeline the API uses, and this is the process it matters most in: it is
+// the one that will hold released fields, and the one running third-party page scripts
+// while it does.
+builder.AddDbrLogging();
+
 builder.Services.AddDbrPersistence(builder.Configuration);
 
 // Deliberately no key management here. This process drives browsers against
