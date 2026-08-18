@@ -242,6 +242,27 @@ CALL app.enable_tenant_rls('vault.profile_identity', 'tenant_id', 'dbr_vault');
 > application code, and it makes that failure closed rather than silent. A deployment wanting the stronger property should connect as a dedicated
 > login role that is not a superuser; nothing here has to change for that to work.
 
+### What sits outside it, and why that is not a gap
+
+Three kinds of table deliberately never call the procedure above:
+
+| Table | Why |
+|---|---|
+| `passkey_ceremony` | A ceremony exists precisely while there is no tenant to scope it to — that is what logging in and signing up mean. Its unguessable primary key stands in, and the rows are kept correspondingly cheap and short-lived |
+| `broker`, `legal_basis`, `broker_legal_basis` | Shared reference data. A broker is a company and a legal basis is a statute; neither belongs to an account, and both are public facts |
+| `broker_health` (later) | Pacing state shared *across* tenants for one broker |
+
+For the catalog the risk runs the other way round from everywhere else. The usual danger
+is a table that should be scoped and is not. Here it is a table that is shared and gets
+scoped anyway — every tenant would read an empty catalog, every removal would fall back
+to an operational deadline, and nothing would look broken except the answers. So the
+tests assert the inverse of the isolation tests: two different tenants, **and a
+connection carrying no tenant at all**, all read the same rows.
+
+The catalog is also the one place `dbr_app` holds `SELECT` and nothing else. Curated
+content arrives by a reviewed path, which means the code that works out a statutory
+deadline provably cannot edit the statute it worked from.
+
 ## The vault: where identifying data lives
 
 Names, addresses, contact details and dates of birth do not live alongside accounts, jobs and
