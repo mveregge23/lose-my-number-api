@@ -49,6 +49,14 @@ internal sealed class DbrApiFactory(
     /// </summary>
     public const string TermsVersion = "2026-06-01";
 
+    /// <summary>
+    /// The consent text this test instance serves. Deliberately a different value from
+    /// <see cref="TermsVersion"/>: they are separate documents on separate clocks, and
+    /// two settings that happen to hold the same string would let a test pass while the
+    /// code read the wrong one.
+    /// </summary>
+    public const string ConsentPolicyVersion = "consent-2026-07-15";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -62,6 +70,7 @@ internal sealed class DbrApiFactory(
         builder.UseSetting("Passkeys:RelyingPartyId", "localhost");
         builder.UseSetting("Passkeys:Origins:0", Origin);
         builder.UseSetting("Terms:CurrentVersion", TermsVersion);
+        builder.UseSetting("Consent:PolicyVersion", ConsentPolicyVersion);
 
         // Without an address supplied, a placeholder that satisfies startup validation
         // and nothing more: those tests exercise the request pipeline, not encryption,
