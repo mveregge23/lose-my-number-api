@@ -21,6 +21,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Database migrations](#database-migrations)
 - [The tenant boundary](#the-tenant-boundary)
 - [The vault: where identifying data lives](#the-vault-where-identifying-data-lives)
+- [What the account permits](#what-the-account-permits)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
@@ -320,6 +321,49 @@ What a profile may hold is capped — names, contacts and addresses each have a 
 the field lengths. Ordinary tables get that from the schema; these are encrypted columns the
 database cannot read, so the limits live in the API and are the whole of the ceiling.
 
+## What the account permits
+
+Three separate permissions, not one checkbox:
+
+| Scope | What it allows |
+|---|---|
+| `scan` | Searching brokers for this account's identities |
+| `auto_removal` | Opening removal requests for what a scan finds |
+| `auto_resubmit` | Opening one again when removed data reappears |
+
+They are separate because they are different asks. A search is something nobody else sees;
+opening a removal request puts somebody's name and address in front of a broker in a message
+sent as them. Wanting the first without the second is a reasonable position, and one blanket
+agreement would make it unexpressible.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/profile/consent` | All three, and the consent text this instance serves |
+| `POST` | `/api/v1/profile/consent` | Grant or withdraw one, as `{"scope": …, "granted": …, "policyVersion": …}` |
+
+They sit under `/profile` because that is where somebody looks for them, but they belong to the
+**account** rather than to that profile: they cover every identity it manages. Adding a second
+identity already takes its own explicit attestation, so asking again per profile for the same
+three permissions would be friction bought with nothing.
+
+`GET` always answers with all three, including the ones nobody has decided about — those come
+back `granted: false` with a null `since`. A client renders one switch per scope and needs a
+position for each; a missing entry would be a position it had to invent. **Never having been
+asked is not permission**, and nothing runs on somebody's behalf because they have not got
+around to refusing it.
+
+Two things worth knowing before you build against it:
+
+- **Withdrawing does not erase the grant.** Every decision is a new row; the newest one for a
+  scope is what is in force. That is the whole reason the record exists — the question that gets
+  asked months later is not whether a scan may run now, but whether it was permitted when it
+  ran, and under what wording. The application role holds no `UPDATE` on that table, so nothing
+  can quietly turn the history into a switch.
+- **`409 Conflict`** means the consent text moved since the client displayed it. Fetch the
+  current `policyVersion`, show that text, and ask again. What gets recorded is what somebody was
+  actually shown, not what a client claimed — same stance the terms take at signup, and a
+  separate document on a separate clock.
+
 ## Signing in: passkeys
 
 Accounts are opened and entered with a passkey. There is no password, and no step where you
@@ -592,9 +636,10 @@ The overlay is what publishes Postgres on `localhost:5432` and OpenBao on `local
 `Development` settings files point the API and Worker at both, and carry a development token
 signing key. Outside compose, and outside `Development`, both services need
 `ConnectionStrings__Core`, `Tokens__SigningKey` and `Bao__Address`/`Bao__Token` set, and the API
-additionally needs `ConnectionStrings__Vault` and `Terms__CurrentVersion` — they refuse to start
+additionally needs `ConnectionStrings__Vault`, `Terms__CurrentVersion` and
+`Consent__PolicyVersion` — they refuse to start
 without any of them, rather than failing later on the first request that needs a database, a
-token, a key, or an account to open. The Worker has
+token, a key, an account to open, or a permission to record. The Worker has
 no vault connection string and no key-manager credentials on purpose; see
 [the vault](#the-vault-where-identifying-data-lives).
 
@@ -641,6 +686,7 @@ If you are only running this locally, you can stop reading here. If you are depl
 | Passkey relying party is `localhost` over plain HTTP | It is the only origin your browser will reach | Your real domain over HTTPS. Browsers refuse WebAuthn on any non-`localhost` origin without it, so this is enforced whether you set it or not |
 | Token signing key `dbr_dev_token_signing_key_...`, committed to the repo | Nobody else can reach the API to use it | A real secret. Whoever knows this key can mint an access token for any account, so it is the single most important value in this table |
 | Terms version `2026-06-01`, naming no document that exists | Nobody is agreeing to anything on your laptop | The version of terms you actually serve. Every account records this as what its owner accepted, and a version naming nothing makes that record worthless — the one row here that is not a secret and still has to change |
+| Consent policy version `2026-06-01`, naming no document either | Same reason | The version of the consent text you actually serve. Every grant and withdrawal records it, and it is what answers "what was this person shown" long after the wording moved on. A separate document from the terms, so it gets a separate version |
 
 One gap is worth naming rather than leaving to be discovered: **completing a signup for an
 address that already has an account answers `409`**, which tells the caller that address is

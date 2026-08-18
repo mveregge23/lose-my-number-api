@@ -164,6 +164,12 @@ services:
       # instance serves; the API refuses to start without it, because an acceptance
       # recorded against nothing is worse than no record at all.
       Terms__CurrentVersion: ${TERMS_VERSION:-2026-06-01}
+      # Which consent text a grant or revocation is recorded against. A separate
+      # document from the terms above, versioned separately, so rewording what the
+      # system may do on somebody's behalf does not invalidate their attestation that
+      # the identity in their profile is their own. The API refuses to start without
+      # it, for the same reason it refuses without the terms version.
+      Consent__PolicyVersion: ${CONSENT_POLICY_VERSION:-2026-06-01}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
