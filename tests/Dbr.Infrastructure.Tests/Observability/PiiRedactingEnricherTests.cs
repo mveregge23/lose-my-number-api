@@ -42,8 +42,8 @@ public class PiiRedactingEnricherTests
     [Theory]
     [InlineData("Email")]
     [InlineData("TenantEmail")]
-    [InlineData("Name")]
     [InlineData("Names")]
+    [InlineData("GivenName")]
     [InlineData("Line1")]
     [InlineData("PostalCode")]
     [InlineData("DateOfBirth")]
@@ -70,6 +70,67 @@ public class PiiRedactingEnricherTests
         logger.Information("{" + property + "}", "keep me");
 
         Assert.Equal("keep me", Scalar(events.Single(), property));
+    }
+
+    [Theory]
+    [InlineData("Name", "Acme Data Brokers")]
+    [InlineData("City", "Sacramento")]
+    [InlineData("Street", "1 Corporate Plaza")]
+    [InlineData("Contact", "opt-out form")]
+    [InlineData("Identity", "recipe:acme-v3")]
+    [InlineData("Fields", "names, addresses")]
+    public void The_words_a_broker_shares_with_a_person_are_not_withheld(string property, string value)
+    {
+        // The catalog is public data and this is the half of the rule that keeps the
+        // logs usable: a broker has a name, a city and a contact mailbox, and none of
+        // them belong to a tenant. Redacting them buys nothing and takes away exactly
+        // the line somebody debugging a broker is reading.
+        //
+        // Nothing identifying got easier to leak by allowing these. A tenant's own name
+        // and address reach a log through the identity types, which are matched by type
+        // and do not care what the property was called.
+        var (logger, events) = Capture();
+
+        logger.Information("{" + property + "}", value);
+
+        Assert.Equal(value, Scalar(events.Single(), property));
+    }
+
+    [Fact]
+    public void The_specific_spellings_those_types_are_made_of_are_still_withheld()
+    {
+        // The other half. Dropping the vague words must not have dropped the ones that
+        // only ever mean a person.
+        var (logger, events) = Capture();
+
+        logger.Information(
+            "{Names} {Addresses} {Line1} {PostalCode} {FullName} {DateOfBirth} {EmailAddress}",
+            "a", "b", "c", "d", "e", "f", "g");
+
+        var written = events.Single();
+
+        Assert.All(
+            new[] { "Names", "Addresses", "Line1", "PostalCode", "FullName", "DateOfBirth", "EmailAddress" },
+            property => Assert.Equal(PiiRedaction.Marker, Scalar(written, property)));
+    }
+
+    [Fact]
+    public void A_persons_identity_is_still_withheld_under_a_word_that_was_allowed_back()
+    {
+        // The reason allowing the vague words back is safe. Logged as {Fields}, which is
+        // no longer on the list at all — and withheld anyway, because what it holds is
+        // one of the types that is matched whatever it is called.
+        var (logger, events) = Capture();
+
+        logger.Information("{@Fields} {Name}", Fields(), new ProfileContact(
+            Guid.Empty,
+            ProfileContactKind.Email,
+            "alex@example.test"));
+
+        var written = events.Single();
+
+        Assert.Equal(PiiRedaction.Marker, Scalar(written, "Fields"));
+        Assert.DoesNotContain("alex@example.test", written.RenderMessage(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -114,6 +175,28 @@ public class PiiRedactingEnricherTests
         Assert.DoesNotContain("Rowan Lane", rendered, StringComparison.Ordinal);
         Assert.DoesNotContain("Sacramento", rendered, StringComparison.Ordinal);
         Assert.Contains("withheld", rendered, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_phone_number_inside_a_destructured_contact_is_still_withheld()
+    {
+        // The case that keeps the contact type on the list. Destructured, its members
+        // are Id, Kind and Value — and Value is not a name anybody would deny, so the
+        // only thing standing between a phone number and the sink is the type itself.
+        //
+        // An email contact proves nothing here: it would be caught by its shape whether
+        // the type rule existed or not, which is exactly how this gap stayed invisible
+        // until a mutation removed the type and every test still passed.
+        var (logger, events) = Capture();
+
+        logger.Information(
+            "{@Anything}",
+            new ProfileContact(Guid.Empty, ProfileContactKind.Phone, "+1-555-0100"));
+
+        var written = events.Single();
+
+        Assert.Equal(PiiRedaction.Marker, Scalar(written, "Anything"));
+        Assert.DoesNotContain("555-0100", written.RenderMessage(), StringComparison.Ordinal);
     }
 
     [Fact]
