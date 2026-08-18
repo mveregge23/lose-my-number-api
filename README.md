@@ -25,6 +25,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
+- [Logs, and what cannot get into them](#logs-and-what-cannot-get-into-them)
 - [Working on the code without Docker](#working-on-the-code-without-docker)
 - [Deployment modes](#deployment-modes)
 - [Security: local defaults vs. a real deployment](#security-local-defaults-vs-a-real-deployment)
@@ -589,6 +590,52 @@ part of the system. When a job needs a tenant's fields it will ask for a short-l
 only those fields from the service that does hold the keys — which can refuse, and can record that
 it was asked. That release path is not built yet, which is why the Worker currently has nothing to
 decrypt with and nothing to decrypt.
+
+## Logs, and what cannot get into them
+
+Both services log through Serilog. A developer's terminal gets a readable line; everywhere else
+gets one JSON object per line, which is what `docker compose logs` collects and what the OTLP
+sink will ship later.
+
+Levels are yours to set, under `Serilog` rather than the `Logging:LogLevel` section .NET
+projects usually carry — Serilog owns the pipeline here, and the default providers are removed
+at startup so nothing is left registered that could write a line around it:
+
+```jsonc
+"Serilog": {
+  "MinimumLevel": {
+    "Default": "Information",
+    "Override": { "Microsoft.AspNetCore": "Warning" }
+  }
+}
+```
+
+**A log line carries ids and enums, never the fields behind them.** "Removal `{id}` for broker
+`{id}` moved to `Failed`" is the shape; the name or address that removal was about is not in it.
+That is a rule about how calls get written, and rules enforced only by attention eventually are
+not — so there are four layers under it, each covering what the one above cannot:
+
+| Layer | Catches |
+|---|---|
+| The identity types' own `ToString` | Anything that turns one into text — interpolation, concatenation, an exception message |
+| A Serilog destructuring policy | `{@Profile}`, which would otherwise unpack every member |
+| The redaction enricher | Properties named after an identity field, at any depth, and values that are address-shaped whatever they are called |
+| A formatter wrapper | The rendered line, including the one thing nothing else can reach — an exception's message |
+
+The build closes the remaining gap. A message built by string interpolation arrives as a
+finished string with no properties in it, so there is nothing left for the enricher to
+recognise; `CA2254` is turned on as an **error** so that call never compiles. Write
+`logger.LogInformation("... {ProfileId}", id)`, not `logger.LogInformation($"... {id}")`.
+
+Two things worth knowing if you are adding logging:
+
+- **The name list is scoped to this codebase's own loggers.** `Address` here means where somebody
+  lives; in ASP.NET Core's own events it means a listening URL, and an earlier version of this
+  redacted both — the API came up announcing it was listening on `[redacted]`. Framework events
+  keep their own vocabulary, and are still subject to the value and type rules.
+- **`[redacted]` in a line is the mechanism working, not a bug** — but `[redacted]` where you
+  expected an id usually means a property was named after something on the list. Rename the
+  property rather than working around the redactor.
 
 ## Working on the code without Docker
 

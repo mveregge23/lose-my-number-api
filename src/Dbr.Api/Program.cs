@@ -11,6 +11,10 @@ using Dbr.Infrastructure.DependencyInjection;
 // other without someone editing this file.
 var builder = WebApplication.CreateBuilder(args);
 
+// First, so that anything the rest of this file logs while starting up is already
+// going through the redaction step rather than around it.
+builder.AddDbrLogging();
+
 builder.Services.AddDbrPersistence(builder.Configuration);
 builder.Services.AddDbrPasskeys(builder.Configuration);
 builder.Services.AddDbrSessions(builder.Configuration);

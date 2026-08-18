@@ -20,7 +20,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     <PackageReference Include="xunit.v3" Version="3.2.2" />
     <!-- In-memory configuration for the composition-root tests. Only the tests need
          a concrete provider; Dbr.Infrastructure itself depends on the abstraction. -->
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
+    <!-- A real host, so the logging tests can assert against the pipeline the
+         composition roots actually build rather than a second one assembled to match.
+         The point of those tests is which providers are attached, and a hand-built
+         LoggerConfiguration cannot be wrong about that in the way a host can. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>
