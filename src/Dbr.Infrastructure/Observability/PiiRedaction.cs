@@ -51,12 +51,27 @@ public static partial class PiiRedaction
     /// would either drop all of them or grow into a list of everything, which is a deny
     /// list with extra steps and a worse failure mode.
     /// </para>
+    /// <para>
+    /// <b>The generic words are deliberately not here.</b> <c>Name</c>, <c>City</c>,
+    /// <c>Street</c>, <c>Contact</c>, <c>Identity</c> and <c>Fields</c> were on this list
+    /// and have been taken off, because the thing they would mostly match is public
+    /// catalog data: a broker has a name, a city and a contact mailbox, and none of them
+    /// belong to any tenant. Redacting those buys nothing and costs the log lines
+    /// somebody debugging a broker actually needs — and a redactor that eats the useful
+    /// half of a line is one people route around, which is how the entries that do matter
+    /// stop being trusted.
+    /// </para>
+    /// <para>
+    /// Nothing identifying got cheaper to leak by removing them. A tenant's own name and
+    /// address reach a log through <see cref="IdentifyingTypes"/>, which is matched by
+    /// type and does not care what the property was called; the specific spellings below
+    /// cover the members those types are made of.
+    /// </para>
     /// </remarks>
     public static IReadOnlySet<string> IdentifyingNames { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            // Who somebody is.
-            "Name",
+            // Who somebody is. Not "Name" — a broker has one of those too.
             "Names",
             "FullName",
             "GivenName",
@@ -65,27 +80,25 @@ public static partial class PiiRedaction
             "DateOfBirth",
             "Dob",
 
-            // How to reach them.
+            // How to reach them. Not "Contact" — a broker's opt-out mailbox is one.
             "Email",
             "EmailAddress",
             "Phone",
             "PhoneNumber",
-            "Contact",
             "Contacts",
 
-            // Where they live, or lived.
+            // Where they live, or lived. Not "City" or "Street", which say almost
+            // nothing on their own and are as likely to be a broker's registered office.
             "Address",
             "Addresses",
             "Line1",
             "Line2",
-            "Street",
-            "City",
             "PostalCode",
             "ZipCode",
 
-            // The shapes these travel in elsewhere in this codebase.
-            "Fields",
-            "Identity",
+            // The shapes these travel in elsewhere in this codebase. Not "Fields" or
+            // "Identity" on their own: too vague to mean this reliably, and the types
+            // they name are matched by type anyway.
             "IdentityFields",
             "ReleasedFields",
             "Plaintext",
@@ -154,12 +167,30 @@ public static partial class PiiRedaction
     /// Whether a value is identifying regardless of what it was called.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The second net, and the one that catches the case the names cannot: an address
     /// that arrived in a property called <c>Detail</c>, or an exception message that
     /// quotes the account it was about. Only an email shape is matched here, because an
     /// email address is the one piece of identity in this system that has a form nothing
     /// else shares — a run of digits could be a phone number or a receipt reference, and
     /// a redactor that eats reference numbers is one people route around.
+    /// </para>
+    /// <para>
+    /// <b>Unlike the names, this is not scoped to this codebase's own loggers, and the
+    /// cost of that is real.</b> A broker's published opt-out mailbox is email-shaped and
+    /// belongs to nobody here, and it gets withheld like any other. It stays unscoped
+    /// because the leak it prevents happens under somebody else's logger: EF Core writes
+    /// a failed command at error level with the exception attached, so a second signup at
+    /// an address already registered puts that address into an event sourced from
+    /// <c>Microsoft.EntityFrameworkCore.Database.Command</c>. Scoping this to
+    /// <c>Dbr.*</c> would trade a broker mailbox nobody needed in a log for a tenant's
+    /// own address in one, which is the wrong way round.
+    /// </para>
+    /// <para>
+    /// So a log line that wants to say which mailbox a removal went to says which broker
+    /// instead. The mailbox is catalog data and is one lookup away; whose account it was
+    /// sent for is the part that must not be sitting in a log to begin with.
+    /// </para>
     /// </remarks>
     public static bool IsIdentifyingValue(string value) =>
         value is not null && EmailShape().IsMatch(value);

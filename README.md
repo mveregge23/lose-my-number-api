@@ -627,15 +627,42 @@ finished string with no properties in it, so there is nothing left for the enric
 recognise; `CA2254` is turned on as an **error** so that call never compiles. Write
 `logger.LogInformation("... {ProfileId}", id)`, not `logger.LogInformation($"... {id}")`.
 
-Two things worth knowing if you are adding logging:
+### What is deliberately still readable
+
+The redaction is narrow on purpose, because a log you cannot debug from is its own kind of
+failure. **Everything below survives untouched:**
+
+- Every id — `TenantId`, `ProfileId`, `BrokerId`, `RemovalRequestId`, `JobId`, `ExposureId`, and
+  the ids of individual addresses and contacts
+- Every enum, status and state transition; attempt numbers, counts, timestamps, durations
+- Every property on a framework logger — request paths, status codes, EF command text and its
+  parameters, the listening address, the environment name
+- **Broker and catalog vocabulary**: `Name`, `City`, `Street`, `Contact`, `Identity` and `Fields`
+  are deliberately *not* on the deny list. A broker has a name, a city and a contact mailbox and
+  none of them belong to a tenant, so redacting them would cost exactly the line somebody
+  debugging a broker is reading
+
+What is withheld is a tenant's own identity: `Names`, `FullName`, `GivenName`, `Surname`,
+`DateOfBirth`, `Email`, `Phone`, `Contacts`, `Address`, `Addresses`, `Line1`, `Line2`,
+`PostalCode` — plus anything of the identity types, matched by type whatever the property was
+called. Allowing the vague words back cost nothing: a tenant's name reaches a log through
+`ProfileIdentityFields` or `ProfileDetails`, and those are caught by type.
+
+Three things worth knowing if you are adding logging:
 
 - **The name list is scoped to this codebase's own loggers.** `Address` here means where somebody
   lives; in ASP.NET Core's own events it means a listening URL, and an earlier version of this
   redacted both — the API came up announcing it was listening on `[redacted]`. Framework events
   keep their own vocabulary, and are still subject to the value and type rules.
+- **Email-shaped values are withheld everywhere, including a broker's opt-out mailbox.** That one
+  is a deliberate cost rather than an oversight. The rule cannot be scoped to our own loggers,
+  because EF Core writes a failed command at error level with the exception attached — so a second
+  signup at an address already registered puts that address into an event sourced from
+  `Microsoft.EntityFrameworkCore.Database.Command`. Log which broker a removal went to, not which
+  mailbox; the mailbox is catalog data and is one lookup away.
 - **`[redacted]` in a line is the mechanism working, not a bug** — but `[redacted]` where you
-  expected an id usually means a property was named after something on the list. Rename the
-  property rather than working around the redactor.
+  expected a broker field usually means a property was named after something on the list. Rename
+  the property rather than working around the redactor.
 
 ## Working on the code without Docker
 

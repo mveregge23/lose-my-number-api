@@ -46,8 +46,11 @@ public class LoggingPipelineTests
         // test using one keeps passing when the enricher is missing from the pipeline
         // entirely. A name has only the enricher between it and the sink, which is what
         // makes this the test that notices.
+        //
+        // {FullName} rather than {Name}: the bare word is a broker's as often as a
+        // person's and is deliberately not on the list.
         var written = CaptureConsole(logger =>
-            logger.LogInformation("Replacing the profile of {Name}", "Alex Whitfield"));
+            logger.LogInformation("Replacing the profile of {FullName}", "Alex Whitfield"));
 
         Assert.DoesNotContain("Alex Whitfield", written, StringComparison.Ordinal);
         Assert.Contains(PiiRedaction.Marker, written, StringComparison.Ordinal);
