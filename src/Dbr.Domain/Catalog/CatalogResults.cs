@@ -36,6 +36,26 @@ public readonly record struct LegalBasisFilter(string? ResidencyScope, LegalRequ
 public sealed record BrokerEntry(Broker Broker, IReadOnlyList<ConfirmedRegime> Regimes);
 
 /// <summary>
+/// When a request has to be answered by, and on whose authority.
+/// </summary>
+/// <remarks>
+/// The two fields are answered together on purpose. A date on its own cannot say whether
+/// missing it is disappointing or actionable, and that difference is the whole reason the
+/// catalog carries statutes at all.
+/// </remarks>
+/// <param name="DeadlineAt">The moment the window closes.</param>
+/// <param name="Source">Whether a statute set that date or the broker's own target did.</param>
+/// <param name="LegalBasisId">
+/// The regime that governed, or <see langword="null"/> when none did. Recorded so that a
+/// deadline can be traced back to the row — and the citation on it — that produced the
+/// number.
+/// </param>
+public sealed record DeadlineResolution(
+    DateTimeOffset DeadlineAt,
+    DeadlineSource Source,
+    Guid? LegalBasisId);
+
+/// <summary>
 /// A regime, and the record of who decided it applies here.
 /// </summary>
 /// <remarks>

@@ -97,10 +97,15 @@ not: it tells the broker exactly who is asking, which is a disclosure to weigh r
 records that faithfully.
 [CPPA published text, subd. (f)(1)](https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf)
 
-**Today:** the unit is stored and published on the API, and nothing computes a date from it yet.
-When something does, weekends fall out of arithmetic but public holidays do not, and a business-day
-count that ignores them lands early — which is the direction that tells somebody a request is
-overdue while the recipient still has time.
+**Today:** `DeadlineCalculator` turns a count into a date and skips weekends, so a fifteen
+business-day window from a Monday lands on the Monday three weeks later rather than the Tuesday a
+fortnight out. **Public holidays are not skipped.** A window crossing one lands a day early, and
+early is the wrong direction: it reports a request overdue while the recipient still has time, which
+is the failure `deadlineSource` exists to prevent, arrived at by arithmetic instead of by labelling.
+
+The error is bounded and small — at most a couple of days across a window of three weeks — which is
+why this is a known gap rather than a reason to hold the resolver back. It matters most for the one
+rule in the catalog counted this way, California's opt-out clock.
 
 **What closing it involves, roughly:** a source of holidays for the jurisdiction a deadline is
 governed by, and a decision about whose holidays count when the tenant and the broker sit in
