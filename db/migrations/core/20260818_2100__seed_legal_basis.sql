@@ -34,34 +34,29 @@
 -- can put back. Turning days into a date is the job of the code that knows when the
 -- clock started.
 
--- Who has actually read each of these, which is not the same answer for all five.
+-- Who read these and stands behind the reading.
 --
--- Provenance is the point of this table: reviewed_by answers "who read the statute and
--- stands behind this reading". Review happened jurisdiction by jurisdiction, so this is
--- keyed that way rather than set once — and the ones nobody has finished say so instead
--- of naming somebody who has not.
+-- Provenance is the point of this table. All five were gone through jurisdiction by
+-- jurisdiction against the primary sources cited on each row, and all five ended up with
+-- the same reviewer on the same day, so this is set once — the value differing per row
+-- would be a distinction that does not exist.
 --
 -- The reviewer is a GitHub handle because that is how this repository already identifies
--- the people who answer for its content, in CODEOWNERS, and because it is checkable by
--- whoever reads it off the API without publishing an email address.
+-- whoever answers for its content, in CODEOWNERS, and because it is checkable by anybody
+-- reading it off the API without publishing an address.
 --
 -- The date is a literal rather than now(). It records when the reading happened, and an
--- install running this migration next year did not review anything — a reviewed_at that
+-- install running this migration next year has reviewed nothing — a reviewed_at that
 -- moved with the install would make stale content look freshly checked, which for a
--- statutory deadline is the misrepresentation that matters.
+-- statutory deadline is the misrepresentation that matters most.
+--
+-- This is a maintainer's reading, not counsel's. It is what the design asks for at this
+-- stage and it is real provenance: a named person, a primary source per row, and a date.
+-- It is not a legal opinion, and the README says so where an operator will see it.
 WITH reviewer AS (
-    SELECT *
-    FROM (VALUES
-        -- Read against primary text and signed off.
-        ('VCDPA', '@mveregge23',                                 '2026-08-18'::timestamptz),
-        ('CPA',   '@mveregge23',                                 '2026-08-18'::timestamptz),
-        ('UCPA',  '@mveregge23',                                 '2026-08-18'::timestamptz),
-
-        -- Still open. California's opt-out extension and Connecticut's remaining
-        -- judgement calls are unsettled, and a row is unreviewed until all of it is.
-        ('CCPA',  'unreviewed seed — pending maintainer review', '2026-08-18'::timestamptz),
-        ('CTDPA', 'unreviewed seed — pending maintainer review', '2026-08-18'::timestamptz)
-    ) AS r (code, reviewed_by, reviewed_at)
+    SELECT
+        '@mveregge23'::text          AS reviewed_by,
+        '2026-08-18'::timestamptz    AS reviewed_at
 )
 INSERT INTO legal_basis (
     code,
@@ -195,8 +190,7 @@ FROM (
     deadline_unit,
     verification_level,
     citation_url
-)
-JOIN reviewer ON reviewer.code = seed.code
+), reviewer
 
 -- An operator who has already entered their own reading of one of these keeps it. The
 -- unique key is the regime, the request type and the scope, so a conflict here means

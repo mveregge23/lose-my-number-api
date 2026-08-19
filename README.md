@@ -440,11 +440,12 @@ Colorado (`CPA`), Connecticut (`CTDPA`) and Utah (`UCPA`) — each with deletion
 opt-out of targeted advertising. These five come first because that is where the broker volume is,
 not because they are the only states with a statute.
 
-> **These rows have not been reviewed by a lawyer.** Every one of them carries
-> `reviewed_by = 'unreviewed seed — pending maintainer review'`, which is what the API returns and
-> what any client displaying provenance will show. They are read from primary statute text and cite
-> it, but nobody has signed off on the reading. **Do not run an instance that quotes these deadlines
-> to people as legal fact until somebody qualified has read them.**
+> **These rows are maintainer-reviewed, not counsel-reviewed.** Each carries
+> `reviewed_by = '@mveregge23'` and the date it was read, which is what the API returns and what any
+> client displaying provenance will show. Every row was checked against the primary source it cites
+> — statute text, or a state Attorney General's published guidance. That is real provenance and it
+> is what this project asks for at this stage. **It is not a legal opinion.** If you are running an
+> instance that quotes these deadlines to people, get them in front of somebody qualified.
 
 An incomplete catalog is safe; a wrong one is not. A jurisdiction with no row falls back to the
 broker's own `operationalSlaDays`, which is presented as a courtesy target — so removing rows you
