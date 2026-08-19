@@ -117,8 +117,15 @@ FROM (
 
         -- Utah — UCPA. The narrowest of the five in what it grants, and the same
         -- forty-five day answer window once a right does apply.
+        --
+        -- All three cite § 13-61-202 because that is where the obligation these rows
+        -- actually encode lives: "respond to a consumer request without unreasonable
+        -- delay, but in no case later than 45 days after receipt", plus the single
+        -- 45-day extension. The rights themselves are enumerated a section earlier;
+        -- citing that instead would point a reader at what may be asked rather than at
+        -- how long there is to answer, which is the number stored here.
         ('UCPA', 'delete', 'US-UT', 45, 45, 'basic',
-         'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S203.html'),
+         'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S202.html'),
         ('UCPA', 'opt_out_sale', 'US-UT', 45, 45, 'none',
          'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S202.html'),
         ('UCPA', 'opt_out_targeted_ads', 'US-UT', 45, 45, 'none',
