@@ -186,6 +186,7 @@ public static class CatalogEndpoints
             residencyScope = regime.Basis.ResidencyScope,
             responseDeadlineDays = regime.Basis.ResponseDeadlineDays,
             extensionDays = regime.Basis.ExtensionDays,
+            deadlineUnit = CatalogVocabulary.ToWire(regime.Basis.DeadlineUnit),
             verificationLevel = CatalogVocabulary.ToWire(regime.Basis.VerificationLevel),
             citationUrl = regime.Basis.CitationUrl,
             reviewedAt = regime.Basis.ReviewedAt,
@@ -206,6 +207,13 @@ public static class CatalogEndpoints
             residencyScope = basis.ResidencyScope,
             responseDeadlineDays = basis.ResponseDeadlineDays,
             extensionDays = basis.ExtensionDays,
+
+            // Days alone are not a duration here. Fifteen business days and fifteen
+            // calendar days are most of a week apart, so a client rendering the number
+            // without the unit would misstate the deadline in exactly the direction
+            // that tells somebody they have recourse before they do.
+            deadlineUnit = CatalogVocabulary.ToWire(basis.DeadlineUnit),
+
             verificationLevel = CatalogVocabulary.ToWire(basis.VerificationLevel),
 
             // Provenance travels with the row wherever it goes. A deadline somebody is

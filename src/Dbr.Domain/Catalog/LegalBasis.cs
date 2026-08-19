@@ -46,8 +46,19 @@ public class LegalBasis
     /// </remarks>
     public required string ResidencyScope { get; set; }
 
-    /// <summary>The statutory window to answer in.</summary>
+    /// <summary>The statutory window to answer in, counted in <see cref="DeadlineUnit"/>.</summary>
     public required int ResponseDeadlineDays { get; set; }
+
+    /// <summary>
+    /// Whether this regime's days are calendar days or business days.
+    /// </summary>
+    /// <remarks>
+    /// Governs <see cref="ExtensionDays"/> as well: an extension is more of the same
+    /// regime's time. Defaults to calendar, which is what a statute means when it does
+    /// not say — but it cannot be assumed, because at least one of these counts the
+    /// other way and the difference is most of a week.
+    /// </remarks>
+    public DeadlineUnit DeadlineUnit { get; set; } = DeadlineUnit.Calendar;
 
     /// <summary>
     /// A one-time extension where the regime allows one; zero where it does not.

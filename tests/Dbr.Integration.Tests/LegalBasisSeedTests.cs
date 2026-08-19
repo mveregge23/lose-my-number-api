@@ -105,6 +105,33 @@ public class LegalBasisSeedTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_one_regime_counted_in_business_days_says_so()
+    {
+        // California's opt-out clock is the only one of the fifteen not counted in
+        // calendar days, and it is stored as the statute prints it — fifteen, marked
+        // business — rather than converted to a calendar figure that appears nowhere in
+        // the source. Fifteen business days is most of a week longer than fifteen
+        // calendar ones, so a row that lost the unit would read as a deadline six days
+        // earlier than the law allows.
+        var bases = await AllSeededAsync();
+
+        foreach (var basis in bases.Where(basis =>
+            basis.Code == "CCPA" && basis.RequestType != LegalRequestType.Delete))
+        {
+            Assert.Equal(DeadlineUnit.Business, basis.DeadlineUnit);
+            Assert.Equal(15, basis.ResponseDeadlineDays);
+        }
+
+        // And nothing else claims business days, which is the half that would rot
+        // quietly: a unit applied too widely stretches deadlines nobody asked to stretch.
+        foreach (var basis in bases.Where(basis =>
+            basis.Code != "CCPA" || basis.RequestType == LegalRequestType.Delete))
+        {
+            Assert.Equal(DeadlineUnit.Calendar, basis.DeadlineUnit);
+        }
+    }
+
+    [Fact]
     public async Task A_deadline_is_a_real_window_and_an_extension_is_allowed_to_be_zero()
     {
         // Zero extension is a statement — this regime grants none — while a zero
@@ -161,12 +188,19 @@ public class LegalBasisSeedTests(PostgresFixture postgres) : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, status);
 
-        var codes = body.GetProperty("legalBases")
-            .EnumerateArray()
-            .Select(basis => basis.GetProperty("code").GetString())
-            .ToList();
+        var california = body.GetProperty("legalBases").EnumerateArray().ToList();
 
-        Assert.Contains("CCPA", codes);
+        Assert.Contains(california, basis => basis.GetProperty("code").GetString() == "CCPA");
+
+        // The unit travels with the number. A client rendering "15 days" for a rule that
+        // means fifteen business days would restate the deadline six days early, which is
+        // the same error the column was added to stop — one layer further out.
+        var optOut = Assert.Single(
+            california,
+            basis => basis.GetProperty("requestType").GetString() == "opt_out_sale");
+
+        Assert.Equal(15, optOut.GetProperty("responseDeadlineDays").GetInt32());
+        Assert.Equal("business", optOut.GetProperty("deadlineUnit").GetString());
     }
 
     private async Task<List<LegalBasis>> AllSeededAsync()

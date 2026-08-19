@@ -459,10 +459,15 @@ migration or by whatever you run with migration privileges, never by the applica
 written with `ON CONFLICT DO NOTHING` on `(code, request_type, residency_scope)`, so an instance
 that already holds its own reading of a regime keeps it — including its reviewer and review date.
 
-One conversion is worth knowing about: `response_deadline_days` is calendar days, and California's
-opt-out timing is expressed in business days. Fifteen business days is stored as 21 calendar days,
-which rounds the safe way — a deadline that reads slightly late only delays noticing a genuine
-miss, while one that reads early would tell somebody they have recourse they do not yet have.
+Deadlines carry their own unit. `response_deadline_days` is a count and `deadline_unit` says how to
+count it — `calendar` for fourteen of the fifteen rows, `business` for California's opt-out clock,
+which the statute expresses as "no later than 15 business days". Both reach the API, and a client
+showing the number without the unit will misstate the deadline by most of a week.
+
+The alternative was to convert at seed time and store 21 calendar days. Storing the rule as written
+keeps the row checkable against the citation printed beside it, and leaves the conversion to the
+code that computes an actual date — the only place that knows when the clock started and can skip
+weekends and public holidays properly. `deadline_unit` governs `extension_days` too.
 
 ## Signing in: passkeys
 

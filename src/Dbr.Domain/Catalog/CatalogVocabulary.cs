@@ -90,6 +90,24 @@ public static class CatalogVocabulary
         _ => null,
     };
 
+    public static string ToWire(DeadlineUnit unit) => unit switch
+    {
+        DeadlineUnit.Calendar => "calendar",
+        DeadlineUnit.Business => "business",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(unit),
+            unit,
+            "Unmapped deadline unit. Adding one means a migration widening the check "
+            + "constraint on legal_basis.deadline_unit as well."),
+    };
+
+    public static DeadlineUnit? ParseDeadlineUnit(string? value) => value switch
+    {
+        "calendar" => DeadlineUnit.Calendar,
+        "business" => DeadlineUnit.Business,
+        _ => null,
+    };
+
     public static string ToWire(VerificationLevel level) => level switch
     {
         VerificationLevel.None => "none",
