@@ -127,6 +127,11 @@ public sealed class PostgresFixture : IAsyncLifetime
             .AddDbrPersistence(configuration)
             .AddDbrPasskeys(configuration)
             .AddDbrSessions(configuration)
+
+            // The catalog and the resolver over it. They need a connection and nothing
+            // else — no configuration, no container — so there is no reason for a test
+            // provider to differ from the API's here.
+            .AddDbrCatalog()
             // The vault context, but not key management: resolving the context needs
             // only a connection, and a provider that demanded a running OpenBao would
             // make every database test pay for a container it does not use. Tests that
