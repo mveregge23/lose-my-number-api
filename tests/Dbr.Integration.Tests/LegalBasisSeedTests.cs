@@ -91,6 +91,30 @@ public class LegalBasisSeedTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_row_either_names_who_read_it_or_admits_nobody_has()
+    {
+        // Review happens jurisdiction by jurisdiction, so which rows are signed changes
+        // over time and this deliberately does not pin that. What it pins is that there
+        // is no third state: a reviewer is a handle somebody can look up, or the row
+        // says outright that it is unreviewed. Anything else — a blank, a placeholder
+        // that reads like a name, a half-edited value — is a row claiming provenance it
+        // does not have, which is worse than an absent row because an absent row falls
+        // back to a deadline honestly labelled a courtesy.
+        var bases = await AllSeededAsync();
+
+        foreach (var basis in bases)
+        {
+            var named = basis.ReviewedBy.StartsWith('@');
+            var admitted = basis.ReviewedBy.Contains("unreviewed", StringComparison.OrdinalIgnoreCase);
+
+            Assert.True(
+                named ^ admitted,
+                $"{basis.Code} is reviewed by '{basis.ReviewedBy}', which neither names somebody "
+                + "nor says nobody has read it.");
+        }
+    }
+
+    [Fact]
     public async Task Every_row_cites_somewhere_a_reader_could_actually_go()
     {
         // The column only refuses blank. A citation is the difference between a row

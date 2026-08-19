@@ -34,16 +34,34 @@
 -- can put back. Turning days into a date is the job of the code that knows when the
 -- clock started.
 
+-- Who has actually read each of these, which is not the same answer for all five.
+--
+-- Provenance is the point of this table: reviewed_by answers "who read the statute and
+-- stands behind this reading". Review happened jurisdiction by jurisdiction, so this is
+-- keyed that way rather than set once — and the ones nobody has finished say so instead
+-- of naming somebody who has not.
+--
+-- The reviewer is a GitHub handle because that is how this repository already identifies
+-- the people who answer for its content, in CODEOWNERS, and because it is checkable by
+-- whoever reads it off the API without publishing an email address.
+--
+-- The date is a literal rather than now(). It records when the reading happened, and an
+-- install running this migration next year did not review anything — a reviewed_at that
+-- moved with the install would make stale content look freshly checked, which for a
+-- statutory deadline is the misrepresentation that matters.
 WITH reviewer AS (
-    -- One place to set this, because every row below takes the same value and a
-    -- reviewer named in fifteen literals is a reviewer named wrong in one of them.
-    --
-    -- Provenance is the point of this table: reviewed_by answers "who read the statute
-    -- and stands behind this reading". Until somebody has actually done that, it says
-    -- so rather than naming a person who has not.
-    SELECT
-        'unreviewed seed — pending maintainer review'::text AS reviewed_by,
-        now()                                               AS reviewed_at
+    SELECT *
+    FROM (VALUES
+        -- Read against primary text and signed off.
+        ('VCDPA', '@mveregge23',                                 '2026-08-18'::timestamptz),
+        ('CPA',   '@mveregge23',                                 '2026-08-18'::timestamptz),
+        ('UCPA',  '@mveregge23',                                 '2026-08-18'::timestamptz),
+
+        -- Still open. California's opt-out extension and Connecticut's remaining
+        -- judgement calls are unsettled, and a row is unreviewed until all of it is.
+        ('CCPA',  'unreviewed seed — pending maintainer review', '2026-08-18'::timestamptz),
+        ('CTDPA', 'unreviewed seed — pending maintainer review', '2026-08-18'::timestamptz)
+    ) AS r (code, reviewed_by, reviewed_at)
 )
 INSERT INTO legal_basis (
     code,
@@ -68,6 +86,7 @@ SELECT
     seed.citation_url,
     reviewer.reviewed_at,
     reviewer.reviewed_by
+
 FROM (
     VALUES
         -- California — CCPA as amended by the CPRA.
@@ -91,14 +110,24 @@ FROM (
         -- than 15 business days from the date the business receives the request."
         -- Stored as fifteen, marked business, and left for the deadline calculation to
         -- turn into a date — these are the only two rows here that are not calendar.
+        --
+        -- No extension, and that is the section's own wording rather than an omission.
+        -- The forty-five-plus-forty-five in § 1798.130(a)(2) enumerates what it extends:
+        -- "the time period to provide the required information, to correct inaccurate
+        -- personal information, or to delete personal information". Opting out is none
+        -- of those three, and that subdivision does not address opt-out timing at all —
+        -- it is a rule about answering a verifiable consumer request, and an opt-out is
+        -- deliberately not one.
         ('CCPA', 'opt_out_sale', 'US-CA', 15, 0, 'business', 'none',
          'https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf'),
         ('CCPA', 'opt_out_targeted_ads', 'US-CA', 15, 0, 'business', 'none',
          'https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf'),
 
         -- Virginia — VCDPA. Forty-five days from receipt, extendable once by another
-        -- forty-five. Virginia authenticates every consumer request including an
-        -- opt-out, which is why these three agree where California's do not.
+        -- forty-five. Virginia authenticates every consumer request, opt-outs included:
+        -- unlike Connecticut, whose act carves opt-outs out of authentication by name,
+        -- this one does not, so the general rule reaches them. That is why these three
+        -- agree on verification where California's and Connecticut's do not.
         ('VCDPA', 'delete', 'US-VA', 45, 45, 'calendar', 'basic',
          'https://law.lis.virginia.gov/vacode/title59.1/chapter53/section59.1-577/'),
         ('VCDPA', 'opt_out_sale', 'US-VA', 45, 45, 'calendar', 'basic',
@@ -128,6 +157,14 @@ FROM (
         -- here models revocation, so no row encodes that fifteen. Recorded because the
         -- two numbers sit a few pages apart in one document and the wrong one is the
         -- easier to reach for.
+        --
+        -- The opt-outs need no verification, and that is read rather than assumed:
+        -- § 4(c)(4) says "a controller shall not be required to authenticate an opt-out
+        -- request", and the act's definition of "authenticate" reaches only the rights
+        -- in subdivisions (1) to (4) — the opt-outs are (5). Deletion is (3), so it is
+        -- authenticated, which is why these three rows disagree. Virginia's do not
+        -- disagree: its statute carves nothing out, so an opt-out there is authenticated
+        -- like everything else.
         ('CTDPA', 'delete', 'US-CT', 45, 45, 'calendar', 'basic',
          'https://www.cga.ct.gov/2022/act/pa/pdf/2022PA-00015-R00SB-00006-PA.PDF'),
         ('CTDPA', 'opt_out_sale', 'US-CT', 45, 45, 'calendar', 'none',
@@ -158,7 +195,8 @@ FROM (
     deadline_unit,
     verification_level,
     citation_url
-), reviewer
+)
+JOIN reviewer ON reviewer.code = seed.code
 
 -- An operator who has already entered their own reading of one of these keeps it. The
 -- unique key is the regime, the request type and the scope, so a conflict here means
