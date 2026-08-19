@@ -935,6 +935,10 @@ Contributions are welcome. A few conventions worth knowing up front:
 Reviewer expectations vary by path (see `.github/CODEOWNERS`): broker recipes are reviewed as data,
 while connectors, legal-basis content, and database migrations carry a higher bar.
 
+Looking for something to pick up? [`KNOWN-GAPS.md`](KNOWN-GAPS.md) lists obligations the catalog
+already records that the code does not meet yet — each with what the law requires, what exists
+today, and roughly what closing it involves.
+
 ### What CI checks
 
 Every pull request runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). To see the same

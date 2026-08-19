@@ -116,7 +116,18 @@ FROM (
         ('CPA', 'opt_out_targeted_ads', 'US-CO', 45, 45, 'calendar', 'none',
          'https://content.leg.colorado.gov/sites/default/files/2021a_190_signed.pdf'),
 
-        -- Connecticut — CTDPA, Public Act 22-15.
+        -- Connecticut — CTDPA, Public Act 22-15. Forty-five days from receipt with one
+        -- forty-five day extension, per § 4(c)(1), covering every consumer right the act
+        -- grants — opt-outs included.
+        --
+        -- The act also contains a fifteen-day clock, and it is not this one. § 6(a)(6)
+        -- requires a controller to stop processing within fifteen days of a consumer
+        -- *revoking consent*, which is a different act from asking to opt out of a sale:
+        -- revocation withdraws a permission the consumer previously gave, and an opt-out
+        -- is a right exercised against processing that never needed permission. Nothing
+        -- here models revocation, so no row encodes that fifteen. Recorded because the
+        -- two numbers sit a few pages apart in one document and the wrong one is the
+        -- easier to reach for.
         ('CTDPA', 'delete', 'US-CT', 45, 45, 'calendar', 'basic',
          'https://www.cga.ct.gov/2022/act/pa/pdf/2022PA-00015-R00SB-00006-PA.PDF'),
         ('CTDPA', 'opt_out_sale', 'US-CT', 45, 45, 'calendar', 'none',
@@ -127,18 +138,17 @@ FROM (
         -- Utah — UCPA. The narrowest of the five in what it grants, and the same
         -- forty-five day answer window once a right does apply.
         --
-        -- All three cite § 13-61-202 because that is where the obligation these rows
-        -- actually encode lives: "respond to a consumer request without unreasonable
-        -- delay, but in no case later than 45 days after receipt", plus the single
-        -- 45-day extension. The rights themselves are enumerated a section earlier;
-        -- citing that instead would point a reader at what may be asked rather than at
-        -- how long there is to answer, which is the number stored here.
+        -- All three cite § 13-61-203, which carries the timeline these rows encode.
+        -- The rights themselves — deletion, opting out of a sale, and opting out of
+        -- targeted advertising, so all three of these belong here — are enumerated in
+        -- § 13-61-201, which is worth reading alongside it but is not where the number
+        -- stored here comes from.
         ('UCPA', 'delete', 'US-UT', 45, 45, 'calendar', 'basic',
-         'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S202.html'),
+         'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S203.html'),
         ('UCPA', 'opt_out_sale', 'US-UT', 45, 45, 'calendar', 'none',
-         'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S202.html'),
+         'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S203.html'),
         ('UCPA', 'opt_out_targeted_ads', 'US-UT', 45, 45, 'calendar', 'none',
-         'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S202.html')
+         'https://le.utah.gov/xcode/Title13/Chapter61/13-61-S203.html')
 ) AS seed (
     code,
     request_type,
