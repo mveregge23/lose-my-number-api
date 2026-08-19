@@ -83,3 +83,10 @@ jobs:
       # licence a downstream consumer has to guess at. Nothing else checks for them.
       - name: SPDX headers
         run: ./scripts/check-spdx-headers.sh
+
+      # The curated catalog, read and validated without a database. This belongs on
+      # the pull request rather than the deploy: by the time a malformed file reaches
+      # a deploy, reviewers have already approved it — and the failure there is a
+      # deploy that stops rather than a review that catches something.
+      - name: Catalog
+        run: dotnet run --project src/Dbr.CatalogSync --no-restore -- --check

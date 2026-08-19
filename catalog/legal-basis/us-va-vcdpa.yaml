@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Virginia — the VCDPA.
+#
+# Forty-five days from receipt, extendable once by another forty-five, covering every
+# right the act grants. Virginia authenticates every consumer request including an
+# opt-out: unlike Connecticut, whose act carves opt-outs out of authentication by name,
+# this one does not, so the general rule reaches them. That is why all three entries
+# below agree on verification where California's and Connecticut's do not.
+
+code: VCDPA
+residencyScope: US-VA
+
+reviewedAt: 2026-08-18
+reviewedBy: "@mveregge23"
+
+requests:
+  - requestType: delete
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: basic
+    citationUrl: https://law.lis.virginia.gov/vacode/title59.1/chapter53/section59.1-577/
+
+  - requestType: opt_out_sale
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: basic
+    citationUrl: https://law.lis.virginia.gov/vacode/title59.1/chapter53/section59.1-577/
+
+  - requestType: opt_out_targeted_ads
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: basic
+    citationUrl: https://law.lis.virginia.gov/vacode/title59.1/chapter53/section59.1-577/

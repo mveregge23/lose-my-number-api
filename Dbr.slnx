@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Dbr.Api/Dbr.Api.csproj" />
+    <Project Path="src/Dbr.CatalogSync/Dbr.CatalogSync.csproj" />
     <Project Path="src/Dbr.Domain/Dbr.Domain.csproj" />
     <Project Path="src/Dbr.Infrastructure/Dbr.Infrastructure.csproj" />
     <Project Path="src/Dbr.Migrator/Dbr.Migrator.csproj" />
@@ -8,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Dbr.Api.Tests/Dbr.Api.Tests.csproj" />
+    <Project Path="tests/Dbr.CatalogSync.Tests/Dbr.CatalogSync.Tests.csproj" />
     <Project Path="tests/Dbr.Infrastructure.Tests/Dbr.Infrastructure.Tests.csproj" />
     <Project Path="tests/Dbr.Integration.Tests/Dbr.Integration.Tests.csproj" />
     <Project Path="tests/Dbr.Migrator.Tests/Dbr.Migrator.Tests.csproj" />

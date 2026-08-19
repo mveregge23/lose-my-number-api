@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Colorado — the CPA.
+#
+# Forty-five days, extendable once by forty-five. Opt-outs are reachable by a universal
+# opt-out signal, which a controller has to honour without authenticating whoever sent
+# it — hence no verification on those two.
+#
+# The citation is the signed session law, which is the primary source and is served as a
+# scanned PDF. The Attorney General's published guidance states the same deadline in
+# readable form and is the copy this reading was checked against:
+# https://coag.gov/resources/colorado-privacy-act/
+
+code: CPA
+residencyScope: US-CO
+
+reviewedAt: 2026-08-18
+reviewedBy: "@mveregge23"
+
+requests:
+  - requestType: delete
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: basic
+    citationUrl: https://content.leg.colorado.gov/sites/default/files/2021a_190_signed.pdf
+
+  - requestType: opt_out_sale
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: none
+    citationUrl: https://content.leg.colorado.gov/sites/default/files/2021a_190_signed.pdf
+
+  - requestType: opt_out_targeted_ads
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: none
+    citationUrl: https://content.leg.colorado.gov/sites/default/files/2021a_190_signed.pdf

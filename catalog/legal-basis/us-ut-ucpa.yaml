@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Utah — the UCPA.
+#
+# The narrowest of the five in what it grants, and the same forty-five day answer window
+# once a right does apply.
+#
+# All three cite section 13-61-203, which carries the timeline these entries encode. The
+# rights themselves — deletion, opting out of a sale, and opting out of targeted
+# advertising, so all three belong here — are enumerated in section 13-61-201, which is
+# worth reading alongside it but is not where the number comes from.
+
+code: UCPA
+residencyScope: US-UT
+
+reviewedAt: 2026-08-18
+reviewedBy: "@mveregge23"
+
+requests:
+  - requestType: delete
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: basic
+    citationUrl: https://le.utah.gov/xcode/Title13/Chapter61/13-61-S203.html
+
+  - requestType: opt_out_sale
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: none
+    citationUrl: https://le.utah.gov/xcode/Title13/Chapter61/13-61-S203.html
+
+  - requestType: opt_out_targeted_ads
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: none
+    citationUrl: https://le.utah.gov/xcode/Title13/Chapter61/13-61-S203.html

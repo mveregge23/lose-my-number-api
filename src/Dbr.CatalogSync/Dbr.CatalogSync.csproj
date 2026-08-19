@@ -1,0 +1,43 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Dbr.CatalogSync</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- YAML because the people reviewing this content are reading statutes, not code,
+         and a format with comments is what lets a file carry the reasoning beside the
+         number it justifies. Npgsql directly rather than EF Core: this writes the
+         catalog, and the role the application connects as holds SELECT on those tables
+         and nothing else. It connects as the owner, exactly as the migrator does. -->
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Unlike the migrator, this does reference the domain, and the distinction is
+         worth keeping straight. The migrator is kept blind to the model so that the
+         test comparing hand-written schema against that model is not comparing the
+         model against itself. Nothing here owns schema; what it needs from the domain
+         is the one spelling of each enum shared by the column, the conversion and the
+         wire, and a second copy of those spellings living here is exactly the drift
+         that spelling was consolidated to prevent. -->
+    <ProjectReference Include="..\Dbr.Domain\Dbr.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compiled in rather than read off disk, for the same reason the migration
+         scripts are: one artifact carries its own content, so a deployed image cannot
+         disagree with a mounted path, and "the binary and the catalog are out of step"
+         stops being possible. LogicalName flattens each file to its bare name, which is
+         what the reader matches on. -->
+    <EmbeddedResource Include="..\..\catalog\legal-basis\*.yaml"
+                      LogicalName="legal-basis.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

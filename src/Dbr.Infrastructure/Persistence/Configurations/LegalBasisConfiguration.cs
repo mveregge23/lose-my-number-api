@@ -32,11 +32,23 @@ internal sealed class LegalBasisConfiguration : IEntityTypeConfiguration<LegalBa
                 level => CatalogVocabulary.ToWire(level),
                 stored => VerificationLevelFromStorage(stored));
 
+        builder.Property(basis => basis.Source)
+            .HasConversion(
+                source => CatalogVocabulary.ToWire(source),
+                stored => SourceFromStorage(stored));
+
         builder.Property(basis => basis.DeadlineUnit)
             .HasConversion(
                 unit => CatalogVocabulary.ToWire(unit),
                 stored => DeadlineUnitFromStorage(stored));
     }
+
+    private static CatalogSource SourceFromStorage(string stored) =>
+        CatalogVocabulary.ParseCatalogSource(stored)
+        ?? throw new InvalidOperationException(
+            $"legal_basis.source holds '{stored}', which this build has no value for. "
+            + "Either a migration widened the check constraint ahead of the code, or a row "
+            + "was written by hand.");
 
     private static DeadlineUnit DeadlineUnitFromStorage(string stored) =>
         CatalogVocabulary.ParseDeadlineUnit(stored)
