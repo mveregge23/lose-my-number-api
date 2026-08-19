@@ -53,6 +53,15 @@ public class CatalogVocabularyTests
     }
 
     [Fact]
+    public void Every_deadline_unit_has_a_spelling_that_survives_the_round_trip()
+    {
+        foreach (var unit in Enum.GetValues<DeadlineUnit>())
+        {
+            Assert.Equal(unit, CatalogVocabulary.ParseDeadlineUnit(CatalogVocabulary.ToWire(unit)));
+        }
+    }
+
+    [Fact]
     public void The_spellings_are_the_ones_the_check_constraints_accept()
     {
         // The values in the migration, written out once. If a spelling is ever derived
@@ -64,6 +73,8 @@ public class CatalogVocabularyTests
         Assert.Equal("opt_out_sale", CatalogVocabulary.ToWire(LegalRequestType.OptOutSale));
         Assert.Equal("opt_out_targeted_ads", CatalogVocabulary.ToWire(LegalRequestType.OptOutTargetedAds));
         Assert.Equal("enhanced", CatalogVocabulary.ToWire(VerificationLevel.Enhanced));
+        Assert.Equal("calendar", CatalogVocabulary.ToWire(DeadlineUnit.Calendar));
+        Assert.Equal("business", CatalogVocabulary.ToWire(DeadlineUnit.Business));
     }
 
     [Fact]
@@ -76,6 +87,7 @@ public class CatalogVocabularyTests
         Assert.Null(CatalogVocabulary.ParseLegalRequestType(null));
         Assert.Null(CatalogVocabulary.ParseVerificationLevel(string.Empty));
         Assert.Null(CatalogVocabulary.ParseEmailContactMode("AliasPreferred"));
+        Assert.Null(CatalogVocabulary.ParseDeadlineUnit("working"));
     }
 
     [Fact]
@@ -88,5 +100,6 @@ public class CatalogVocabularyTests
         Assert.Throws<ArgumentOutOfRangeException>(() => CatalogVocabulary.ToWire((EmailContactMode)99));
         Assert.Throws<ArgumentOutOfRangeException>(() => CatalogVocabulary.ToWire((LegalRequestType)99));
         Assert.Throws<ArgumentOutOfRangeException>(() => CatalogVocabulary.ToWire((VerificationLevel)99));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CatalogVocabulary.ToWire((DeadlineUnit)99));
     }
 }

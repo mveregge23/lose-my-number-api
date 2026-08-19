@@ -433,6 +433,43 @@ Writes are deliberately absent. The role serving these requests holds `SELECT` o
 nothing else, so the code that computes a statutory deadline cannot edit the statute it computed
 from; curated content arrives by a reviewed path with the privileges migrations run with.
 
+### What ships in the legal-basis catalog
+
+A migration seeds fifteen rows covering five US states — California (`CCPA`), Virginia (`VCDPA`),
+Colorado (`CPA`), Connecticut (`CTDPA`) and Utah (`UCPA`) — each with deletion, opt-out of sale, and
+opt-out of targeted advertising. These five come first because that is where the broker volume is,
+not because they are the only states with a statute.
+
+> **These rows are maintainer-reviewed, not counsel-reviewed.** Each carries
+> `reviewed_by = '@mveregge23'` and the date it was read, which is what the API returns and what any
+> client displaying provenance will show. Every row was checked against the primary source it cites
+> — statute text, or a state Attorney General's published guidance. That is real provenance and it
+> is what this project asks for at this stage. **It is not a legal opinion.** If you are running an
+> instance that quotes these deadlines to people, get them in front of somebody qualified.
+
+An incomplete catalog is safe; a wrong one is not. A jurisdiction with no row falls back to the
+broker's own `operationalSlaDays`, which is presented as a courtesy target — so removing rows you
+do not trust degrades the service honestly rather than breaking it:
+
+```sql
+DELETE FROM legal_basis WHERE code = 'UCPA';
+```
+
+Replacing them is the same shape as adding your own: rows are curated content, applied by a
+migration or by whatever you run with migration privileges, never by the application. The seed is
+written with `ON CONFLICT DO NOTHING` on `(code, request_type, residency_scope)`, so an instance
+that already holds its own reading of a regime keeps it — including its reviewer and review date.
+
+Deadlines carry their own unit. `response_deadline_days` is a count and `deadline_unit` says how to
+count it — `calendar` for fourteen of the fifteen rows, `business` for California's opt-out clock,
+which the statute expresses as "no later than 15 business days". Both reach the API, and a client
+showing the number without the unit will misstate the deadline by most of a week.
+
+The alternative was to convert at seed time and store 21 calendar days. Storing the rule as written
+keeps the row checkable against the citation printed beside it, and leaves the conversion to the
+code that computes an actual date — the only place that knows when the clock started and can skip
+weekends and public holidays properly. `deadline_unit` governs `extension_days` too.
+
 ## Signing in: passkeys
 
 Accounts are opened and entered with a passkey. There is no password, and no step where you
@@ -898,6 +935,10 @@ Contributions are welcome. A few conventions worth knowing up front:
 
 Reviewer expectations vary by path (see `.github/CODEOWNERS`): broker recipes are reviewed as data,
 while connectors, legal-basis content, and database migrations carry a higher bar.
+
+Looking for something to pick up? [`KNOWN-GAPS.md`](KNOWN-GAPS.md) lists obligations the catalog
+already records that the code does not meet yet — each with what the law requires, what exists
+today, and roughly what closing it involves.
 
 ### What CI checks
 
