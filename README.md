@@ -433,6 +433,37 @@ Writes are deliberately absent. The role serving these requests holds `SELECT` o
 nothing else, so the code that computes a statutory deadline cannot edit the statute it computed
 from; curated content arrives by a reviewed path with the privileges migrations run with.
 
+### What ships in the legal-basis catalog
+
+A migration seeds fifteen rows covering five US states — California (`CCPA`), Virginia (`VCDPA`),
+Colorado (`CPA`), Connecticut (`CTDPA`) and Utah (`UCPA`) — each with deletion, opt-out of sale, and
+opt-out of targeted advertising. These five come first because that is where the broker volume is,
+not because they are the only states with a statute.
+
+> **These rows have not been reviewed by a lawyer.** Every one of them carries
+> `reviewed_by = 'unreviewed seed — pending maintainer review'`, which is what the API returns and
+> what any client displaying provenance will show. They are read from primary statute text and cite
+> it, but nobody has signed off on the reading. **Do not run an instance that quotes these deadlines
+> to people as legal fact until somebody qualified has read them.**
+
+An incomplete catalog is safe; a wrong one is not. A jurisdiction with no row falls back to the
+broker's own `operationalSlaDays`, which is presented as a courtesy target — so removing rows you
+do not trust degrades the service honestly rather than breaking it:
+
+```sql
+DELETE FROM legal_basis WHERE code = 'UCPA';
+```
+
+Replacing them is the same shape as adding your own: rows are curated content, applied by a
+migration or by whatever you run with migration privileges, never by the application. The seed is
+written with `ON CONFLICT DO NOTHING` on `(code, request_type, residency_scope)`, so an instance
+that already holds its own reading of a regime keeps it — including its reviewer and review date.
+
+One conversion is worth knowing about: `response_deadline_days` is calendar days, and California's
+opt-out timing is expressed in business days. Fifteen business days is stored as 21 calendar days,
+which rounds the safe way — a deadline that reads slightly late only delays noticing a genuine
+miss, while one that reads early would tell somebody they have recourse they do not yet have.
+
 ## Signing in: passkeys
 
 Accounts are opened and entered with a passkey. There is no password, and no step where you

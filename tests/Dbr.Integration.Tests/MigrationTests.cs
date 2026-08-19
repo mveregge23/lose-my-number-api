@@ -24,11 +24,21 @@ public class MigrationTests(PostgresFixture postgres)
     [Fact]
     public async Task Both_sets_journal_what_they_applied()
     {
-        Assert.Equal(10, await postgres.QueryAsOwnerAsync<long>(
-            $"SELECT count(*) FROM public.{MigrationSet.Core.JournalTable}"));
+        // Counted against the scripts the migrator actually ships rather than against a
+        // number written here. A literal has to be bumped by whoever adds a migration,
+        // which makes it a reminder rather than a check — and the thing worth checking
+        // is that everything shipped got applied, which is this comparison either way.
+        var migrator = typeof(MigrationSet).Assembly;
 
-        Assert.Equal(3, await postgres.QueryAsOwnerAsync<long>(
-            $"SELECT count(*) FROM public.{MigrationSet.Vault.JournalTable}"));
+        Assert.Equal(
+            MigrationSet.Core.ScriptNames(migrator).Count,
+            await postgres.QueryAsOwnerAsync<long>(
+                $"SELECT count(*) FROM public.{MigrationSet.Core.JournalTable}"));
+
+        Assert.Equal(
+            MigrationSet.Vault.ScriptNames(migrator).Count,
+            await postgres.QueryAsOwnerAsync<long>(
+                $"SELECT count(*) FROM public.{MigrationSet.Vault.JournalTable}"));
     }
 
     [Fact]
