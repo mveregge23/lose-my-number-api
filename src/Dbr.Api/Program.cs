@@ -22,6 +22,7 @@ builder.Services.AddDbrKeyManagement(builder.Configuration);
 builder.Services.AddDbrVault(builder.Configuration);
 builder.Services.AddDbrSignup(builder.Configuration);
 builder.Services.AddDbrConsent(builder.Configuration);
+builder.Services.AddDbrCatalog();
 builder.Services.AddDbrBearerAuthentication();
 
 var app = builder.Build();
@@ -41,6 +42,7 @@ app.MapAccountEndpoints();
 app.MapPasskeyEndpoints();
 app.MapProfileEndpoints();
 app.MapConsentEndpoints();
+app.MapCatalogEndpoints();
 
 app.Run();
 

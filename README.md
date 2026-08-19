@@ -22,6 +22,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [The tenant boundary](#the-tenant-boundary)
 - [The vault: where identifying data lives](#the-vault-where-identifying-data-lives)
 - [What the account permits](#what-the-account-permits)
+- [The broker catalog, readable by anybody](#the-broker-catalog-readable-by-anybody)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
@@ -385,6 +386,52 @@ Two things worth knowing before you build against it:
   current `policyVersion`, show that text, and ask again. What gets recorded is what somebody was
   actually shown, not what a client claimed — same stance the terms take at signup, and a
   separate document on a separate clock.
+
+## The broker catalog, readable by anybody
+
+Four routes, and **the only ones in this API that need no token**:
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/brokers` | The active catalog, filterable by `removalMethod` and `legalBasisId` |
+| `GET` | `/api/v1/brokers/{id}` | One broker, with the regimes confirmed to govern it |
+| `GET` | `/api/v1/legal-basis` | Known regimes, filterable by `residencyScope` and `requestType` |
+| `GET` | `/api/v1/legal-basis/{id}` | One regime, with its citation and reviewer |
+
+Nothing here belongs to an account — a broker is a company and a legal basis is a statute — so
+there is nobody to scope the answer to. Requiring a token would mean opening an account before
+you could find out whether this instance could help you at all, and the answer would be the same
+one either way.
+
+Filter values are the same spellings the database holds: `webform` / `email` / `api` / `postal`,
+and `delete` / `opt_out_sale` / `opt_out_targeted_ads`. A value that is not one of them is a
+`400` naming the parameter rather than a list with the filter quietly dropped — an ignored filter
+answers a different question than the one asked and looks like a complete list. An **empty**
+parameter (`?removalMethod=`) is a filter nobody set, which is what a form control with nothing
+selected sends. A `residencyScope` is a coarse region code (`US-CA`, `EU`) and is upper-cased for
+you.
+
+Two things the responses are careful about:
+
+- **`operationalSlaDays` on a broker is a courtesy target, not a deadline.** A removal governed
+  by a statute takes its deadline from the regime instead, and `legalBases` on the detail route
+  is what says whether one applies. An empty `legalBases` means nobody has confirmed a statute
+  reaches that company — applicability turns on revenue and data-volume thresholds this system
+  cannot check, so it is confirmed by a person or not at all. It is not a claim that no statute
+  does.
+- **Pacing is not published.** How many jobs a broker's lane runs at once, the delay between
+  them, and how many rate-limited answers open the circuit breaker are all in the catalog row and
+  none of them are on the wire. They are this instance's tuning for talking to a company rather
+  than facts about it, and the exact number of refusals that stops it trying is only useful to
+  somebody who wants it to stop.
+
+The listing is active entries only. A broker the operator has deactivated still answers on its
+own route, with `active: false` — somebody holding a link to it should be told it is not being
+worked, not told the company was never here.
+
+Writes are deliberately absent. The role serving these requests holds `SELECT` on the catalog and
+nothing else, so the code that computes a statutory deadline cannot edit the statute it computed
+from; curated content arrives by a reviewed path with the privileges migrations run with.
 
 ## Signing in: passkeys
 

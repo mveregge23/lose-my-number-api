@@ -20,41 +20,30 @@ internal sealed class LegalBasisConfiguration : IEntityTypeConfiguration<LegalBa
     {
         builder.HasKey(basis => basis.Id);
 
-        // Spelled out rather than derived: lower-casing OptOutSale gives 'optoutsale'
-        // and the constraint expects 'opt_out_sale'. The constraint rejects the write
-        // if this and the column ever disagree.
+        // One spelling for the column, the conversion and the wire. Lower-casing the C#
+        // member would give 'optoutsale', which the check constraint rejects.
         builder.Property(basis => basis.RequestType)
             .HasConversion(
-                type => ToStorage(type),
-                stored => FromStorage(stored));
+                type => CatalogVocabulary.ToWire(type),
+                stored => RequestTypeFromStorage(stored));
 
-        // This one lower-cases cleanly, so it goes through the general convention.
         builder.Property(basis => basis.VerificationLevel)
             .HasConversion(
-                level => level.ToString().ToLowerInvariant(),
-                stored => Enum.Parse<VerificationLevel>(stored, ignoreCase: true));
+                level => CatalogVocabulary.ToWire(level),
+                stored => VerificationLevelFromStorage(stored));
     }
 
-    private static string ToStorage(LegalRequestType type) => type switch
-    {
-        LegalRequestType.Delete => "delete",
-        LegalRequestType.OptOutSale => "opt_out_sale",
-        LegalRequestType.OptOutTargetedAds => "opt_out_targeted_ads",
-        _ => throw new ArgumentOutOfRangeException(
-            nameof(type),
-            type,
-            "Unmapped request type. Adding one means a migration widening the check "
-            + "constraint on legal_basis.request_type as well."),
-    };
+    private static LegalRequestType RequestTypeFromStorage(string stored) =>
+        CatalogVocabulary.ParseLegalRequestType(stored)
+        ?? throw new InvalidOperationException(
+            $"legal_basis.request_type holds '{stored}', which this build has no value for. "
+            + "Either a migration widened the check constraint ahead of the code, or a row "
+            + "was written by hand.");
 
-    private static LegalRequestType FromStorage(string stored) => stored switch
-    {
-        "delete" => LegalRequestType.Delete,
-        "opt_out_sale" => LegalRequestType.OptOutSale,
-        "opt_out_targeted_ads" => LegalRequestType.OptOutTargetedAds,
-        _ => throw new InvalidOperationException(
-            $"legal_basis.request_type holds '{stored}', which this build has no value "
-            + "for. Either a migration widened the constraint ahead of the code, or a row "
-            + "was written by hand."),
-    };
+    private static VerificationLevel VerificationLevelFromStorage(string stored) =>
+        CatalogVocabulary.ParseVerificationLevel(stored)
+        ?? throw new InvalidOperationException(
+            $"legal_basis.verification_level holds '{stored}', which this build has no value "
+            + "for. Either a migration widened the check constraint ahead of the code, or a "
+            + "row was written by hand.");
 }

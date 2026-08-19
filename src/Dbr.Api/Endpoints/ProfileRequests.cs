@@ -3,6 +3,7 @@
 
 using System.Text.RegularExpressions;
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Regions;
 
 namespace Dbr.Api.Endpoints;
 
@@ -118,7 +119,8 @@ public static partial class ProfileRequestValidation
             }
         }
 
-        if (NormalizeRegion(request.ResidencyRegion) is { } region && !RegionCode().IsMatch(region))
+        if (RegionCode.Normalize(request.ResidencyRegion) is { } region
+            && !RegionCode.IsWellFormed(region))
         {
             // The database has the same rule as a check constraint. Refusing it here is
             // what turns a 500 into an answer that says which field and what shape.
@@ -187,7 +189,7 @@ public static partial class ProfileRequestValidation
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        return NormalizeRegion(request.ResidencyRegion);
+        return RegionCode.Normalize(request.ResidencyRegion);
     }
 
     /// <summary>
@@ -214,9 +216,6 @@ public static partial class ProfileRequestValidation
             ? parsed
             : null;
 
-    private static string? NormalizeRegion(string? region) =>
-        Blank(region) ? null : region!.Trim().ToUpperInvariant();
-
     private static string? NormalizeCountry(string? country) =>
         Blank(country) ? null : country!.Trim().ToUpperInvariant();
 
@@ -226,10 +225,6 @@ public static partial class ProfileRequestValidation
         value is not null && value.Trim().Length > limit
             ? $"{what} is limited to {limit} characters."
             : null;
-
-    /// <summary>Matches the check constraint on <c>privacy_profile.residency_region</c>.</summary>
-    [GeneratedRegex("^[A-Z]{2}(-[A-Z0-9]{1,3})?$")]
-    private static partial Regex RegionCode();
 
     [GeneratedRegex("^[A-Z]{2}$")]
     private static partial Regex CountryCode();

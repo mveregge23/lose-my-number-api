@@ -28,7 +28,7 @@ namespace Dbr.Integration.Tests;
 /// answer, because the guarantee lives in the Transit engine rather than in this code.
 /// </remarks>
 [Collection(ProfileVaultCollection.Name)]
-public class ProfileVaultTests(PostgresFixture postgres, OpenBaoFixture openBao)
+public class ProfileVaultTests(PostgresFixture postgres, OpenBaoFixture openBao) : IAsyncLifetime
 {
     private static readonly ProfileIdentityFields Fields = new(
         ["Alex Whitfield", "A. Whitfield"],
@@ -37,6 +37,20 @@ public class ProfileVaultTests(PostgresFixture postgres, OpenBaoFixture openBao)
         new DateOnly(1985, 4, 17));
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
+
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+
+    /// <summary>Takes the accounts this class opened back out again.</summary>
+    /// <remarks>
+    /// Every other class sharing this database does the same, and one that does not
+    /// leaves its rows where a neighbour's assertion about an empty table can find them.
+    /// Which neighbour notices depends on the order the classes happen to run in, so the
+    /// failure arrives attached to whichever test ran second rather than to this one.
+    /// </remarks>
+    public async ValueTask DisposeAsync() =>
+        await postgres.ExecuteAsOwnerAsync(
+            "DELETE FROM vault.profile_identity; DELETE FROM public.privacy_profile; "
+            + "DELETE FROM public.tenant;");
 
     [Fact]
     public async Task A_profile_written_by_its_owner_reads_back_as_what_went_in()

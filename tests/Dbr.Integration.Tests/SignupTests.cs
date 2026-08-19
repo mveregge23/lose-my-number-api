@@ -104,23 +104,25 @@ public class SignupTests(PostgresFixture postgres, OpenBaoFixture openBao) : IAs
     [Fact]
     public async Task Terms_that_are_no_longer_current_are_refused_and_open_no_account()
     {
-        var options = await _api.BeginSignUpAsync(Unique());
+        var email = Unique();
+        var options = await _api.BeginSignUpAsync(email);
 
         var (status, _) = await _api.CompleteSignUpAsync(options, NewAuthenticator(), "1999-01-01");
 
         Assert.Equal(HttpStatusCode.Conflict, status);
-        Assert.Equal(0, await postgres.QueryAsOwnerAsync<long>("SELECT count(*) FROM public.tenant"));
+        Assert.Equal(0, await AccountsForAsync(email));
     }
 
     [Fact]
     public async Task Accepting_nothing_at_all_is_refused_rather_than_recorded_as_agreement()
     {
-        var options = await _api.BeginSignUpAsync(Unique());
+        var email = Unique();
+        var options = await _api.BeginSignUpAsync(email);
 
         var (status, _) = await _api.CompleteSignUpAsync(options, NewAuthenticator(), acceptedTermsVersion: null);
 
         Assert.Equal(HttpStatusCode.Conflict, status);
-        Assert.Equal(0, await postgres.QueryAsOwnerAsync<long>("SELECT count(*) FROM public.tenant"));
+        Assert.Equal(0, await AccountsForAsync(email));
     }
 
     [Fact]
@@ -175,7 +177,7 @@ public class SignupTests(PostgresFixture postgres, OpenBaoFixture openBao) : IAs
             options.GetProperty("termsVersion").GetString());
 
         Assert.Equal(HttpStatusCode.InternalServerError, status);
-        Assert.Equal(0, await postgres.QueryAsOwnerAsync<long>("SELECT count(*) FROM public.tenant"));
+        Assert.Equal(0, await AccountsForAsync(email));
 
         // And the address is free, which is the part that matters to whoever was trying
         // to sign up: they can do it again once the instance is healthy.
@@ -187,6 +189,18 @@ public class SignupTests(PostgresFixture postgres, OpenBaoFixture openBao) : IAs
     }
 
     private static string Unique() => $"signup-{Guid.NewGuid():N}@example.test";
+
+    /// <summary>
+    /// How many accounts exist for the address a test just tried to open one for.
+    /// </summary>
+    /// <remarks>
+    /// Asked about this address rather than about the whole table. "No account was
+    /// opened" is a statement about this signup, and counting every row makes it a
+    /// statement about whichever class ran before this one instead.
+    /// </remarks>
+    private async Task<long> AccountsForAsync(string email) =>
+        await postgres.QueryAsOwnerAsync<long>(
+            $"SELECT count(*) FROM public.tenant WHERE lower(email) = lower('{email}')");
 
     private TestAuthenticator NewAuthenticator()
     {
