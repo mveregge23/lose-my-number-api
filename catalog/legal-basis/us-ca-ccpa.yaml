@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# California — the CCPA as amended by the CPRA.
+#
+# Two clocks, and they are not the same kind of clock. A verifiable consumer request to
+# delete gets 45 days with one 45-day extension. Opting out of a sale is a deadline to
+# *comply* rather than to answer — there is no reply step, the obligation is to stop
+# selling — and it is counted in business days.
+
+code: CCPA
+residencyScope: US-CA
+
+reviewedAt: 2026-08-18
+reviewedBy: "@mveregge23"
+
+requests:
+  - requestType: delete
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+
+    # "Verifiable consumer request" is what the act calls it throughout, so identity is
+    # matched against what the request already carries.
+    verificationLevel: basic
+    citationUrl: https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1798.105
+
+  - requestType: opt_out_sale
+    responseDeadlineDays: 15
+    extensionDays: 0
+
+    # "no later than 15 business days from the date the business receives the request"
+    deadlineUnit: business
+
+    # Deliberately not a verifiable request: requiring proof of identity to stop a sale
+    # would put a toll on the right itself.
+    verificationLevel: none
+
+    # No extension. The 45-plus-45 in § 1798.130(a)(2) enumerates what it extends —
+    # providing information, correcting, deleting — and opting out is none of them.
+    citationUrl: https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf
+
+  - requestType: opt_out_targeted_ads
+    responseDeadlineDays: 15
+    extensionDays: 0
+    deadlineUnit: business
+    verificationLevel: none
+    citationUrl: https://cppa.ca.gov/regulations/pdf/ccpa_statute_eff_20260101.pdf

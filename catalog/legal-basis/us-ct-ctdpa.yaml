@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Connecticut — the CTDPA, Public Act 22-15.
+#
+# Forty-five days from receipt with one forty-five day extension, per section 4(c)(1),
+# covering every consumer right the act grants — opt-outs included.
+#
+# The act contains a second, fifteen-day clock and it is not this one. Section 6(a)(6)
+# requires a controller to stop processing within fifteen days of a consumer *revoking
+# consent*, which is a different act from asking to opt out of a sale: revocation
+# withdraws a permission the consumer previously gave, and an opt-out is a right
+# exercised against processing that never needed one. Nothing here models revocation, so
+# no entry encodes that fifteen.
+#
+# The opt-outs need no verification, and that is read rather than assumed: section
+# 4(c)(4) says "a controller shall not be required to authenticate an opt-out request",
+# and the act's definition of "authenticate" reaches only the rights in subdivisions (1)
+# to (4). The opt-outs are (5). Deletion is (3), so it is authenticated.
+
+code: CTDPA
+residencyScope: US-CT
+
+reviewedAt: 2026-08-18
+reviewedBy: "@mveregge23"
+
+requests:
+  - requestType: delete
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: basic
+    citationUrl: https://www.cga.ct.gov/2022/act/pa/pdf/2022PA-00015-R00SB-00006-PA.PDF
+
+  - requestType: opt_out_sale
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: none
+    citationUrl: https://www.cga.ct.gov/2022/act/pa/pdf/2022PA-00015-R00SB-00006-PA.PDF
+
+  - requestType: opt_out_targeted_ads
+    responseDeadlineDays: 45
+    extensionDays: 45
+    deadlineUnit: calendar
+    verificationLevel: none
+    citationUrl: https://www.cga.ct.gov/2022/act/pa/pdf/2022PA-00015-R00SB-00006-PA.PDF

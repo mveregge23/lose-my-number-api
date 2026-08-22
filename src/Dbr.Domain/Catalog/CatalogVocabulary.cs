@@ -108,6 +108,24 @@ public static class CatalogVocabulary
         _ => null,
     };
 
+    public static string ToWire(CatalogSource source) => source switch
+    {
+        CatalogSource.Local => "local",
+        CatalogSource.Catalog => "catalog",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(source),
+            source,
+            "Unmapped catalog source. Adding one means a migration widening the check "
+            + "constraint on legal_basis.source as well."),
+    };
+
+    public static CatalogSource? ParseCatalogSource(string? value) => value switch
+    {
+        "local" => CatalogSource.Local,
+        "catalog" => CatalogSource.Catalog,
+        _ => null,
+    };
+
     public static string ToWire(VerificationLevel level) => level switch
     {
         VerificationLevel.None => "none",

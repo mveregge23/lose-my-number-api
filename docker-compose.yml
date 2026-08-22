@@ -124,6 +124,26 @@ services:
       postgres:
         condition: service_healthy
 
+  # The curated catalog, applied after the schema exists and before anything serves
+  # traffic. Separate from the migrator because DbUp journals each script and never runs
+  # it again, while catalog content changes on its own schedule and has to be reapplied
+  # every deploy — the same reconciliation, run afresh each time.
+  catalog-sync:
+    build:
+      context: .
+      dockerfile: src/Dbr.CatalogSync/Dockerfile
+    restart: "no"
+    environment:
+      # The same variable the migrator reads, and the same role: this writes rows the
+      # application is granted SELECT on and nothing more, so it connects as the owner.
+      ConnectionStrings__Core: >-
+        Host=postgres;Port=5432;Database=${POSTGRES_DB:-dbr};Username=${POSTGRES_USER:-dbr};Password=${POSTGRES_PASSWORD:-dbr_dev_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+
   api:
     build:
       context: .
@@ -181,6 +201,8 @@ services:
         condition: service_completed_successfully
       migrator:
         condition: service_completed_successfully
+      catalog-sync:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -207,6 +229,8 @@ services:
       openbao-init:
         condition: service_completed_successfully
       migrator:
+        condition: service_completed_successfully
+      catalog-sync:
         condition: service_completed_successfully
 
 volumes:

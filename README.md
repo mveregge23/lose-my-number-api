@@ -90,14 +90,18 @@ laptop.
 | `openbao` | `openbao/openbao:2` | Key management — per-tenant envelope encryption |
 | `openbao-init` | `openbao/openbao:2` | One-shot: initializes/unseals OpenBao, then exits |
 | `migrator` | built from `src/Dbr.Migrator` | One-shot: applies database migrations, then exits |
+| `catalog-sync` | built from `src/Dbr.CatalogSync` | One-shot: applies the curated catalog files, then exits |
 
-`openbao-init` and `migrator` exiting is normal and expected — they are one-shot jobs, not
-services. `api` and `worker` wait for both to finish *successfully* before they start, so a
+`openbao-init`, `migrator` and `catalog-sync` exiting is normal and expected — they are one-shot jobs, not
+services. `api` and `worker` wait for all three to finish *successfully* before they start, so a
 failed migration stops the stack instead of letting the application run against a schema it
-doesn't match. If you see `api` and `worker` stuck in `Created`, read the `migrator` log first:
+doesn't match — and a catalog that will not apply stops it instead of letting the application
+answer from content nobody approved. If you see `api` and `worker` stuck in `Created`, read the
+`migrator` and `catalog-sync` logs first:
 
 ```bash
 docker compose logs migrator
+docker compose logs catalog-sync
 ```
 
 ### Why OpenBao and not HashiCorp Vault
@@ -455,10 +459,42 @@ do not trust degrades the service honestly rather than breaking it:
 DELETE FROM legal_basis WHERE code = 'UCPA';
 ```
 
-Replacing them is the same shape as adding your own: rows are curated content, applied by a
-migration or by whatever you run with migration privileges, never by the application. The seed is
-written with `ON CONFLICT DO NOTHING` on `(code, request_type, residency_scope)`, so an instance
-that already holds its own reading of a regime keeps it — including its reviewer and review date.
+### Editing the catalog
+
+Legal-basis content lives in [`catalog/legal-basis/`](catalog/legal-basis/) as one YAML file per
+jurisdiction, and that is the only place to change it. A statutory correction is a diff in a file,
+on a pull request, reviewed at the two-approval bar `.github/CODEOWNERS` sets for that path — which
+is a review counsel can actually do, unlike a migration.
+
+The `catalog-sync` service applies those files on every `docker compose up`, after the migrator and
+before the API or worker start. It connects as the owning role, because the application is granted
+`SELECT` on the catalog and nothing more.
+
+```
+catalog/legal-basis/us-ca-ccpa.yaml   ->  catalog-sync  ->  legal_basis rows
+```
+
+Three things worth knowing before you edit one:
+
+- **The sync only touches rows it owns.** Every row carries `source`, either `catalog` or `local`.
+  The sync inserts, updates and removes `catalog` rows to match the files, and never touches a
+  `local` one — so a reading of your own survives both an update and a retraction of the shared
+  content. It reports what it left alone rather than silently skipping it.
+- **Deleting a file retracts the row.** That is the point of the split: a regime read wrongly and
+  corrected stops governing requests on the next deploy, instead of lingering until somebody runs a
+  `DELETE` on every install. If brokers are still confirmed against the regime, the retraction is
+  refused with an explanation — those confirmations are a reviewed judgement and the schema will not
+  drop them as a side effect.
+- **Your own rows are yours.** Anything inserted by hand defaults to `source = 'local'`. To take a
+  shipped row over permanently, set its source to `local` and the sync leaves it alone from then on.
+
+`dotnet run --project src/Dbr.CatalogSync -- --check` reads and validates the files without touching
+a database; CI runs exactly that on every pull request, so a malformed file fails review rather than
+a deploy.
+
+The original seed migration is still in `db/migrations/` and still runs on a fresh database — it is
+applied history, not a second source of truth. The five jurisdictions it inserted were handed to the
+catalog when `source` was added, and the files have owned them since.
 
 Deadlines carry their own unit. `response_deadline_days` is a count and `deadline_unit` says how to
 count it — `calendar` for fourteen of the fifteen rows, `business` for California's opt-out clock,

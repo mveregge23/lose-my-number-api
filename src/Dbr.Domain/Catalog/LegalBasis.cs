@@ -80,5 +80,15 @@ public class LegalBasis
     /// <summary>Who read it.</summary>
     public required string ReviewedBy { get; set; }
 
+    /// <summary>
+    /// Whether the shared catalog owns this row or this instance does.
+    /// </summary>
+    /// <remarks>
+    /// Read-only as far as the application is concerned, like everything else here. It
+    /// exists so the sync that applies curated files knows which rows are its to change
+    /// and which are somebody's own work to leave alone.
+    /// </remarks>
+    public CatalogSource Source { get; set; } = CatalogSource.Local;
+
     public DateTimeOffset CreatedAt { get; init; }
 }

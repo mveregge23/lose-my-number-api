@@ -90,6 +90,30 @@ not: it tells the broker exactly who is asking, which is a disclosure to weigh r
 
 ---
 
+## Brokers are not synced from files yet
+
+**Required by:** the design puts broker recipes in `/catalog/brokers/*.yaml` alongside legal-basis
+content, and `.github/CODEOWNERS` already reserves that path at the one-approval tier — a lower bar
+than legal content, because a bad recipe fails one broker's jobs while a bad statute misinforms
+somebody about their rights.
+
+**Today:** `catalog-sync` reads `catalog/legal-basis/**` and nothing else. Broker rows are still
+inserted by hand or by migration, and `broker` has no `source` column, so nothing distinguishes a
+row the shared catalog would own from one an operator entered.
+
+**What closing it involves, roughly:** the mechanism is built and the shape is the same — a file
+schema, a validator, `source` on the table, and the same upsert-and-retract pass. Two things differ.
+A broker's pacing fields are exactly the kind of thing an operator may want to tune locally, so the
+all-or-nothing ownership that suits a statute may be too coarse here. And `broker_legal_basis` — the
+confirmations that a regime governs a company — is curated content too, currently modelled nowhere
+in the files; it is what makes retracting a regime fail today, so whichever story adds it should
+decide whether a confirmation lives in the broker's file, the regime's, or its own.
+
+This was left out deliberately rather than missed: no broker rows ship at all, so a sync for them
+would have had no content to apply and nothing to test against beyond fixtures.
+
+---
+
 ## Business-day deadlines need a holiday calendar
 
 **Required by:** California counts its opt-out compliance window in business days — "no later than

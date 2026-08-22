@@ -38,6 +38,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          else would be asserting against a second implementation of the schema, which
          can agree with the tests while disagreeing with what production applies. -->
     <ProjectReference Include="..\..\src\Dbr.Migrator\Dbr.Migrator.csproj" />
+    <ProjectReference Include="..\..\src\Dbr.CatalogSync\Dbr.CatalogSync.csproj" />
     <ProjectReference Include="..\..\src\Dbr.Api\Dbr.Api.csproj" />
   </ItemGroup>
 
