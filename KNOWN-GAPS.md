@@ -114,6 +114,42 @@ would have had no content to apply and nothing to test against beyond fixtures.
 
 ---
 
+## A scan is recorded but never runs
+
+**Required by:** §6.4 makes `POST /scans` a request to go and ask brokers what they hold, and §10.1
+routes that work to a queue keyed by `brokerId` so every tenant's jobs for one broker share a lane.
+
+**Today:** the request is validated, gated on consent, and written down as a `scan` row in `queued`,
+and nothing picks it up. There is no queue, no connector and no worker, so a scan stays queued
+forever and no `exposure` row is ever written by anything but a test.
+
+**What closing it involves, roughly:** the per-broker consumer lanes and the connector contract,
+which are their own stories. What this one deliberately did not do is invent the message: enqueueing
+onto a transport nobody has chosen would have meant settling the shape of a scan job against an
+imagined consumer, and the shape is the part that is expensive to change once something is reading
+it.
+
+---
+
+## An exposure cannot yet say what it matched
+
+**Required by:** §3 gives `EXPOSURE` an `encryptedSourceRef` — the pointer to the specific broker
+profile page a match was found on — and classes it Restricted-PII, which puts it in the vault store
+under field-level envelope encryption alongside names and addresses. §1's minimization rule then
+requires purging it once the exposure is `removed` and its verification window has passed.
+
+**Today:** the `exposure` table has no such column, in either store. Nothing writes exposures yet, so
+there has been nothing to point at.
+
+**What closing it involves, roughly:** a vault-side table keyed by exposure id, in the same shape as
+`vault.profile_identity`, plus a release path for whatever needs to read it and the purge that
+minimization requires. It was left out rather than stubbed because the alternative was a column on
+the core table, and a nullable `bytea` sitting in `public.exposure` is exactly the kind of thing a
+later story fills in without noticing which store it is in — which is the whole distinction the
+vault exists to hold.
+
+---
+
 ## Business-day deadlines need a holiday calendar
 
 **Required by:** California counts its opt-out compliance window in business days — "no later than
