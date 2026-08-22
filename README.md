@@ -23,6 +23,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [The vault: where identifying data lives](#the-vault-where-identifying-data-lives)
 - [What the account permits](#what-the-account-permits)
 - [The broker catalog, readable by anybody](#the-broker-catalog-readable-by-anybody)
+- [Asking for a scan](#asking-for-a-scan)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
@@ -505,6 +506,44 @@ The alternative was to convert at seed time and store 21 calendar days. Storing 
 keeps the row checkable against the citation printed beside it, and leaves the conversion to the
 code that computes an actual date — the only place that knows when the clock started and can skip
 weekends and public holidays properly. `deadline_unit` governs `extension_days` too.
+
+## Asking for a scan
+
+A scan is one run of "ask these brokers what they hold about this identity". You ask for one with:
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/scans` | Ask for a scan, as `{"profileId": …, "brokerIds": […]}` — both optional |
+| `GET` | `/api/v1/scans` | Every scan this account has asked for, newest first |
+| `GET` | `/api/v1/scans/{id}` | One scan, with the brokers it was narrowed to |
+
+All three need a token, unlike the catalog's routes. Everything here belongs to an account, and
+there is no version of "what was found about me" that can be answered without knowing whose it is.
+
+**There is nowhere in that request to put a name.** `profileId` names one of the identities this
+account has already created and attested to; omit it and it means your own. That is the whole
+shape of the thing: a scan is structurally a lookup, and an endpoint that accepted a free-text
+identity would be a people-search engine with a removal tool attached. The guarantee is the
+request having no such field rather than a rule that checks one — and the database says it a
+second time, since a scan's foreign key is over the tenant and the profile together, so a row
+pointing at somebody else's identity cannot exist rather than merely being unreadable.
+
+`brokerIds` narrows the run. Leave it out for the whole catalog; an id that is not in this
+instance's catalog is refused, with every bad id named, rather than quietly dropped — a scan over
+fewer brokers than you asked for, reported as the scan you asked for, is a smaller answer that
+looks complete.
+
+Two responses worth knowing about before you build against it:
+
+- **`403 Forbidden`** means this account has not granted the `scan` consent scope, or has
+  withdrawn it. It is not an authentication problem and a fresh token will not help; grant the
+  scope (see [What the account permits](#what-the-account-permits)) and ask again. The check runs
+  on every request rather than once at signup, so withdrawing permission stops the next scan.
+- **`202 Accepted`**, not `201`. The run has been taken on and has not happened.
+
+And the part to be aware of if you are running this today: **a queued scan stays queued.** The
+per-broker worker lanes that would pick one up are a later story, so `POST /scans` records the
+request and nothing executes it yet. `KNOWN-GAPS.md` has the detail.
 
 ## Signing in: passkeys
 
