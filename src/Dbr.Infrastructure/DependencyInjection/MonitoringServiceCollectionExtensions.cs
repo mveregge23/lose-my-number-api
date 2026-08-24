@@ -12,7 +12,7 @@ namespace Dbr.Infrastructure.DependencyInjection;
 /// </summary>
 public static class MonitoringServiceCollectionExtensions
 {
-    /// <summary>Registers the scan service.</summary>
+    /// <summary>Registers the scan and exposure services.</summary>
     /// <remarks>
     /// Requires <c>AddDbrPersistence</c> and <c>AddDbrConsent</c>. Deliberately not the
     /// vault or the key manager: deciding whether a scan may be queued, and for which
@@ -24,6 +24,7 @@ public static class MonitoringServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddScoped<IScanService, ScanService>();
+        services.AddScoped<IExposureService, ExposureService>();
 
         return services;
     }
