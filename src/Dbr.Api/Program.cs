@@ -45,6 +45,7 @@ app.MapProfileEndpoints();
 app.MapConsentEndpoints();
 app.MapCatalogEndpoints();
 app.MapScanEndpoints();
+app.MapExposureEndpoints();
 
 app.Run();
 

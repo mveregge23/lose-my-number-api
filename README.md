@@ -24,6 +24,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [What the account permits](#what-the-account-permits)
 - [The broker catalog, readable by anybody](#the-broker-catalog-readable-by-anybody)
 - [Asking for a scan](#asking-for-a-scan)
+- [What the scans found](#what-the-scans-found)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
@@ -544,6 +545,40 @@ Two responses worth knowing about before you build against it:
 And the part to be aware of if you are running this today: **a queued scan stays queued.** The
 per-broker worker lanes that would pick one up are a later story, so `POST /scans` records the
 request and nothing executes it yet. `KNOWN-GAPS.md` has the detail.
+
+## What the scans found
+
+An exposure is one broker appearing to hold data about one of your identities.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/exposures` | Findings, newest first, filterable by `status` and `brokerId` |
+| `GET` | `/api/v1/exposures/{id}` | One finding |
+| `POST` | `/api/v1/exposures/{id}/dismiss` | Say a finding is not you |
+
+Each finding arrives with the broker it is on — id, name, domain and removal method — so a
+client never has to resolve ids against the catalog to render a list. The pacing fields stay
+off the wire here exactly as they do on the catalog routes: how this instance decides to talk
+to a company is not part of what you were found on.
+
+`status` is one of `new`, `requested`, `removed`, `reappeared`, `dismissed`. **An unrecognised
+value is refused, not ignored** — the alternative is a `200` with an empty array, which reads as
+"you are not listed anywhere", and that is a sentence somebody would act on.
+
+**Dismissing is a judgement, not a delete.** It records that a match is somebody else, which is
+the one call in this API only the person themselves can make — nothing is ever sent in your name
+over a listing you have said is not you. The row stays: it is what stops a later scan re-offering
+the same listing as a fresh discovery. Dismissing twice answers the same as dismissing once.
+
+One refusal to know about: **`409 Conflict`** means a removal request is already open against
+that listing. Saying it is not you while something is in flight in your name over it would leave
+the contradiction standing at the broker rather than resolving it, so cancel the request first.
+(No removal request can exist yet — that is a later story — but the rule is in place so it does
+not have to be retrofitted around one.)
+
+Findings are not paginated. A listing that comes back after removal reappears on the row that
+already knows its history rather than as a new row, so this is bounded by the size of the
+catalog rather than growing with time.
 
 ## Signing in: passkeys
 
