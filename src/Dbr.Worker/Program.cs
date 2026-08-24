@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Infrastructure.DependencyInjection;
+using Dbr.Infrastructure.Monitoring;
 using Dbr.Worker;
+using Quartz;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -13,12 +15,50 @@ builder.AddDbrLogging();
 
 builder.Services.AddDbrPersistence(builder.Configuration);
 
+// A scheduled scan checks permission the same way a requested one does, which is the case
+// the check exists for: somebody who withdrew consent last week is not searched for this
+// month, and nothing has to remember to stop the schedule. That makes the consent policy
+// version this process's configuration too.
+builder.Services.AddDbrConsent(builder.Configuration);
+builder.Services.AddDbrScanScheduling(builder.Configuration);
+
 // Deliberately no key management here. This process drives browsers against
 // third-party sites, so a credential that can decrypt would be a standing decryption
 // right sitting in the most exposed part of the system. When a job needs a tenant's
 // fields, it will ask for a short-lived release of only those fields from the service
 // that does hold the keys — which can refuse, and can record that it was asked.
 builder.Services.AddHostedService<Worker>();
+
+var schedule = new ScanScheduleOptions();
+builder.Configuration.GetSection(ScanScheduleOptions.SectionName).Bind(schedule);
+schedule.Validate();
+
+if (schedule.Enabled)
+{
+    builder.Services.AddQuartz(quartz =>
+    {
+        var job = new JobKey(nameof(ScheduledScanJob));
+
+        quartz.AddJob<ScheduledScanJob>(job);
+
+        // Daily, at an hour the operator picks. The monthly rhythm is not here — it comes
+        // from the account id, which is what keeps every instance from asking every broker
+        // on the same date.
+        quartz.AddTrigger(trigger => trigger
+            .ForJob(job)
+            .WithIdentity($"{nameof(ScheduledScanJob)}-daily")
+            .WithCronSchedule(
+                $"0 0 {schedule.DailyAtHourUtc} ? * *",
+                cron => cron.InTimeZone(TimeZoneInfo.Utc)));
+    });
+
+    // Waits for a running job rather than killing it mid-account on shutdown. A run
+    // interrupted between two accounts is fine — tomorrow's run finds the same people due
+    // — but one interrupted mid-write is a transaction the database has to sort out.
+    builder.Services.AddQuartzHostedService(options => options.WaitForJobsToComplete = true);
+}
+
+builder.Services.AddSingleton(TimeProvider.System);
 
 var host = builder.Build();
 host.Run();

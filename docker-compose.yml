@@ -215,6 +215,16 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_USER:-dbr}
       RabbitMq__Password: ${RABBITMQ_PASSWORD:-dbr_dev_password}
+      # The worker plans the recurring scans, and a scheduled scan checks permission the
+      # same way a requested one does — so the process needs to know which consent text
+      # this instance serves, exactly as the API does. It must be the same value in both
+      # or the two would disagree about what anybody agreed to.
+      Consent__PolicyVersion: ${CONSENT_POLICY_VERSION:-2026-06-01}
+      # The hour the planner wakes up, UTC. Which day of the month an account's scan lands
+      # on is not configurable — it comes from the account id, so the spread across the
+      # month cannot be switched off by accident.
+      ScanSchedule__DailyAtHourUtc: ${SCAN_SCHEDULE_HOUR_UTC:-2}
+      ScanSchedule__Enabled: ${SCAN_SCHEDULE_ENABLED:-true}
       # No key-manager credentials and no vault connection string, deliberately. Workers
       # talk to third-party broker sites, and either of those is a standing decryption
       # right — exactly what a compromised worker should not be able to hand over. When a

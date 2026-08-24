@@ -10,6 +10,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+    <PackageReference Include="Quartz.Extensions.Hosting" Version="3.19.1" />
   </ItemGroup>
 
   <ItemGroup>

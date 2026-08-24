@@ -40,6 +40,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     <ProjectReference Include="..\..\src\Dbr.Migrator\Dbr.Migrator.csproj" />
     <ProjectReference Include="..\..\src\Dbr.CatalogSync\Dbr.CatalogSync.csproj" />
     <ProjectReference Include="..\..\src\Dbr.Api\Dbr.Api.csproj" />
+
+    <!-- The scheduled-scan job lives in the worker, and the part worth testing is the
+         glue: that it plans for the accounts due today and no others, and that each one
+         gets its own scope. Both are things only an end-to-end run can show. -->
+    <ProjectReference Include="..\..\src\Dbr.Worker\Dbr.Worker.csproj" />
   </ItemGroup>
 
   <ItemGroup>

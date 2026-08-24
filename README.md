@@ -25,6 +25,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [The broker catalog, readable by anybody](#the-broker-catalog-readable-by-anybody)
 - [Asking for a scan](#asking-for-a-scan)
 - [What the scans found](#what-the-scans-found)
+- [Monthly scans, and the day yours falls on](#monthly-scans-and-the-day-yours-falls-on)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
@@ -284,6 +285,7 @@ rather than tidy:
 |---|---|---|
 | `dbr_app` | `public` — accounts, sessions, profiles' non-identifying half | the `vault` schema, at all |
 | `dbr_vault` | `vault` — encrypted identity rows | `public`, at all |
+| `dbr_scheduler` | one column of `tenant` — the list of account ids | every other table, and every write |
 
 Each connection assumes one of them on open, decided by which context opened it. A query issued
 over the core connection cannot read an encrypted name; a query issued over the vault connection
@@ -585,6 +587,43 @@ not have to be retrofitted around one.)
 Findings are not paginated. A listing that comes back after removal reappears on the row that
 already knows its history rather than as a new row, so this is bounded by the size of the
 catalog rather than growing with time.
+
+## Monthly scans, and the day yours falls on
+
+The worker plans recurring scans. Every account is scanned monthly — provided it has granted the
+`scan` consent scope — and the day of the month is **derived from the account id**, not from when
+you signed up and not from a column anybody can edit.
+
+That spread is the point. If every account were scanned on the 1st, every broker in the catalog
+would see the entire service arrive at once and spend the rest of the day being throttled. The id
+is hashed into one of 28 days; 28 rather than 31 so that nobody's monthly scan lands on a date
+that does not exist in February.
+
+The job itself wakes daily and asks which accounts are due today:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `ScanSchedule__Enabled` | `true` | Whether the planner runs at all |
+| `ScanSchedule__DailyAtHourUtc` | `2` | The UTC hour it wakes up |
+| `Consent__PolicyVersion` | `2026-06-01` | Must match the API's — the worker reads consent too |
+
+Which day *your* account falls on is not configurable, deliberately: it is what keeps the load
+spread, and an operator able to set it per account would be able to undo that one account at a
+time without noticing.
+
+Two things worth knowing if you run this:
+
+- **Consent is checked on every run**, not once. Withdrawing the `scan` scope stops next month's
+  scan; nothing has to remember to cancel a schedule.
+- **Running the planner twice in a day queues nothing the second time.** A restarted worker, a
+  replayed misfire, or a second worker somebody started by mistake are all harmless — there is a
+  unique index behind it, so this holds even when two of them check at the same instant. Scans you
+  ask for by hand are not affected; asking twice in a day is your prerogative.
+
+The planner needs to know which accounts exist, which no tenant-scoped role can answer. It uses
+`dbr_scheduler` for exactly that one query — one column of one table, no writes — and then does
+everything with a consequence as `dbr_app`, one account at a time, inside the same boundary as
+every other write in this system.
 
 ## Signing in: passkeys
 
