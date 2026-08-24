@@ -81,17 +81,8 @@ public class ScanRequestValidationTests
         Assert.Contains("your own identity", problem, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void The_request_has_nowhere_to_put_an_identity()
-    {
-        // The structural guardrail, asserted as a fact about the type rather than about
-        // any particular validation rule: a scan cannot target a name because there is no
-        // property to carry one. A field added here would fail this and should.
-        var carried = typeof(RequestScanRequest)
-            .GetProperties()
-            .Select(property => property.Name)
-            .ToHashSet(StringComparer.Ordinal);
-
-        Assert.Equal(new HashSet<string>(StringComparer.Ordinal) { "ProfileId", "BrokerIds" }, carried);
-    }
+    // The structural guardrail moved to ScanGuardrailTests, which asserts it by the type
+    // of each property rather than by their names. Naming them made adding a second
+    // identifier — a perfectly legitimate change — look like a guardrail breach, which is
+    // how a check earns a reputation for crying wolf.
 }

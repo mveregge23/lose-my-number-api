@@ -529,6 +529,12 @@ request having no such field rather than a rule that checks one — and the data
 second time, since a scan's foreign key is over the tenant and the profile together, so a row
 pointing at somebody else's identity cannot exist rather than merely being unreadable.
 
+Sending one anyway is **refused, not ignored**. `POST /scans {"name": "Jane Doe"}` returns
+`400`, because a field this API quietly dropped would hand back a perfectly good scan of your
+own profile and let whoever wrote the client conclude that name-based search works. That applies
+to every route here, not just this one: a request body carrying a field the API does not
+implement is an error.
+
 `brokerIds` narrows the run. Leave it out for the whole catalog; an id that is not in this
 instance's catalog is refused, with every bad id named, rather than quietly dropped — a scan over
 fewer brokers than you asked for, reported as the scan you asked for, is a smaller answer that

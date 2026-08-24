@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using System.Text.Json.Serialization;
 using Dbr.Api.Authentication;
 using Dbr.Api.Endpoints;
 using Dbr.Infrastructure.DependencyInjection;
@@ -25,6 +26,16 @@ builder.Services.AddDbrConsent(builder.Configuration);
 builder.Services.AddDbrCatalog();
 builder.Services.AddDbrMonitoring();
 builder.Services.AddDbrBearerAuthentication();
+
+// A field this API does not implement is refused rather than ignored. The default is to
+// drop it silently, which on most routes is merely untidy and on POST /scans is a
+// correctness problem: a client sending a name would get back a perfectly good scan of
+// the caller's own profile, and its author would reasonably conclude that name-based
+// search works. Refusing makes the shape of the request the answer to that question,
+// which is what §10.4 asks the API to be. Applied everywhere rather than to one route,
+// because "the fields we ignore" is not a contract worth having anywhere.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow);
 
 var app = builder.Build();
 
