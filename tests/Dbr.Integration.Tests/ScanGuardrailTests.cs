@@ -111,12 +111,17 @@ public class ScanGuardrailTests(PostgresFixture postgres, OpenBaoFixture openBao
     [InlineData("scan")]
     [InlineData("scan_broker")]
     [InlineData("exposure")]
-    public async Task No_table_in_the_scan_pipeline_has_an_unconstrained_text_column(string table)
+    [InlineData("removal_request")]
+    [InlineData("removal_job")]
+    public async Task No_table_in_the_pipeline_has_an_unconstrained_text_column(string table)
     {
-        // The other door. Every text column on these tables today holds one of a fixed set
-        // of words and carries a check constraint saying so, which means none of them can
-        // hold a name. A new text column without one would be the place an identity could
-        // start being stored — and it would arrive looking like an ordinary migration.
+        // The other door, and it runs the length of the pipeline rather than stopping at
+        // the scan tables: an identity could just as well end up on a removal row. Every
+        // text column on these tables is held to a fixed set of words, or — where the set
+        // is a build-time fact rather than a database one, as with a connector id — to a
+        // shape that is an identifier and not a sentence. A new text column without either
+        // is where an identity could start being stored, and it would arrive looking like
+        // an ordinary migration rather than like a change of policy.
         var unconstrained = await postgres.QueryAsOwnerAsync<string>(
             $"""
              SELECT string_agg(a.attname, ', ' ORDER BY a.attname)
