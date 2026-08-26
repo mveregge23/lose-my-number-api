@@ -7,10 +7,16 @@ using Dbr.Domain.Tenancy;
 namespace Dbr.Domain.Removals;
 
 /// <summary>
-/// One demand made of one broker about one listing, and everything that has happened to
-/// it since.
+/// One demand made of one broker on behalf of one identity, and everything that has
+/// happened to it since.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>A demand is about a person and a company, not about a listing.</b> An exposure is
+/// what may have prompted it and is often absent — the right to tell a broker to delete
+/// what it holds, or to stop selling it, does not depend on having found a page with your
+/// name on it first.
+/// </para>
 /// <para>
 /// A request outlives its attempts. Each attempt is a <see cref="RemovalJob"/>; this row
 /// is the thing that is retried, waited on, confirmed, and — when a listing comes back —
@@ -32,8 +38,39 @@ public class RemovalRequest : ITenantScoped
     /// <summary>The account this demand is made for.</summary>
     public Guid TenantId { get; init; }
 
-    /// <summary>The listing being demanded gone.</summary>
-    public required Guid ExposureId { get; init; }
+    /// <summary>
+    /// Whose data is being demanded gone.
+    /// </summary>
+    /// <remarks>
+    /// The subject of the demand, and the reason it can exist without a listing. It is
+    /// also what a connector needs in order to know whose details to ask the vault for —
+    /// a question that has no answer if the identity is only reachable through an exposure
+    /// that may not be there.
+    /// </remarks>
+    public required Guid PrivacyProfileId { get; init; }
+
+    /// <summary>
+    /// The listing that prompted this demand, or <see langword="null"/> when none did.
+    /// </summary>
+    /// <remarks>
+    /// Evidence rather than subject. Nothing about the right to make the demand depends on
+    /// having found something first: a deletion request does not oblige somebody to prove
+    /// the company holds their data, and an opt-out of sale is prospective — it is a
+    /// meaningful thing to say to a company whose search page returns nothing today. A
+    /// scan only finds what is publicly searchable, and asking only where a search got a
+    /// hit means declining to ask about the rest.
+    /// </remarks>
+    public Guid? ExposureId { get; init; }
+
+    /// <summary>Which right is being exercised.</summary>
+    /// <remarks>
+    /// Recorded rather than implied. §11.2 resolves the governing regime by intersecting
+    /// residency, the broker's confirmed statutes and the kind of demand — deletion and
+    /// opt-out are different rights carrying different deadlines under the same statute —
+    /// so a deadline that did not record which demand it was computed for cannot be read
+    /// back against it.
+    /// </remarks>
+    public required LegalRequestType RequestType { get; init; }
 
     /// <summary>
     /// The company being asked.

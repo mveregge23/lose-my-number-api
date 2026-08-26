@@ -111,6 +111,12 @@ public static class ExposureEndpoints
         {
             id = listing.Exposure.Id,
             scanId = listing.Exposure.ScanId,
+
+            // Whose listing this is. On the row rather than reachable only through the
+            // scan, which matters for an account managing more than one identity: a list
+            // mixing a person's own findings with their dependent's, and no way to tell
+            // them apart, is a list nobody can act on.
+            profileId = listing.Exposure.PrivacyProfileId,
             status = MonitoringVocabulary.ToWire(listing.Exposure.Status),
 
             // A ranking aid rather than a claim. The tenant is the only one who can say

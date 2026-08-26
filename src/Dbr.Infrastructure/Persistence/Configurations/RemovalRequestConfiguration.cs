@@ -33,6 +33,11 @@ internal sealed class RemovalRequestConfiguration : IEntityTypeConfiguration<Rem
                 strategy => RemovalVocabulary.ToWire(strategy),
                 stored => StrategyFromStorage(stored));
 
+        builder.Property(request => request.RequestType)
+            .HasConversion(
+                type => CatalogVocabulary.ToWire(type),
+                stored => RequestTypeFromStorage(stored));
+
         builder.Property(request => request.DeadlineSource)
             .HasConversion(
                 source => CatalogVocabulary.ToWire(source),
@@ -57,6 +62,13 @@ internal sealed class RemovalRequestConfiguration : IEntityTypeConfiguration<Rem
             $"removal_request.strategy holds '{stored}', which this build has no value for. "
             + "Either a migration widened the check constraint ahead of the code, or a row "
             + "was written by hand.");
+
+    private static LegalRequestType RequestTypeFromStorage(string stored) =>
+        CatalogVocabulary.ParseLegalRequestType(stored)
+        ?? throw new InvalidOperationException(
+            $"removal_request.request_type holds '{stored}', which this build has no value "
+            + "for. Either a migration widened the check constraint ahead of the code, or a "
+            + "row was written by hand.");
 
     private static DeadlineSource SourceFromStorage(string stored) =>
         CatalogVocabulary.ParseDeadlineSource(stored)
