@@ -229,14 +229,16 @@ public class ScanTests(PostgresFixture postgres, OpenBaoFixture openBao) : IAsyn
         await GrantScanAsync(token, true);
         var (_, body) = await _api.PostAsync(ScansPath, new { }, token);
         var myScanId = body.GetProperty("id").GetGuid();
+        var myProfileId = body.GetProperty("profileId").GetGuid();
 
         var refused = await Assert.ThrowsAsync<PostgresException>(() =>
             postgres.ExecuteAsOwnerAsync(
                 $"""
                  SET ROLE dbr_app;
                  SELECT set_config('app.tenant_id', '{theirTenantId}', false);
-                 INSERT INTO public.exposure (tenant_id, scan_id, broker_id, status, confidence)
-                     VALUES ('{theirTenantId}', '{myScanId}', '{_brokerId}', 'new', 0.9);
+                 INSERT INTO public.exposure
+                     (tenant_id, scan_id, privacy_profile_id, broker_id, status, confidence)
+                     VALUES ('{theirTenantId}', '{myScanId}', '{myProfileId}', '{_brokerId}', 'new', 0.9);
                  """));
 
         Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, refused.SqlState);

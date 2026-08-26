@@ -323,8 +323,10 @@ public class ExposureTests(PostgresFixture postgres, OpenBaoFixture openBao) : I
         await postgres.ExecuteAsOwnerAsync(
             $"""
              INSERT INTO public.exposure
-                 (id, tenant_id, scan_id, broker_id, status, confidence, discovered_at)
-                 VALUES ('{id}', '{account.TenantId}', '{account.ScanId}', '{brokerId}',
+                 (id, tenant_id, scan_id, privacy_profile_id, broker_id, status, confidence,
+                  discovered_at)
+                 VALUES ('{id}', '{account.TenantId}', '{account.ScanId}', '{account.ProfileId}',
+                         '{brokerId}',
                          '{status}', {confidence.ToString(System.Globalization.CultureInfo.InvariantCulture)},
                          {discoveredAt});
              """);
@@ -348,8 +350,12 @@ public class ExposureTests(PostgresFixture postgres, OpenBaoFixture openBao) : I
         // A real scan, so the findings hang off one the way the composite key requires.
         var (_, scan) = await _api.PostAsync(ScansPath, new { }, token);
 
-        return new Account(token, ApiClient.TenantId(session), scan.GetProperty("id").GetGuid());
+        return new Account(
+            token,
+            ApiClient.TenantId(session),
+            scan.GetProperty("id").GetGuid(),
+            scan.GetProperty("profileId").GetGuid());
     }
 
-    private sealed record Account(string Token, Guid TenantId, Guid ScanId);
+    private sealed record Account(string Token, Guid TenantId, Guid ScanId, Guid ProfileId);
 }

@@ -195,10 +195,11 @@ public class RemovalRequestTests(PostgresFixture postgres, OpenBaoFixture openBa
     }
 
     [Fact]
-    public async Task Only_one_open_demand_per_listing()
+    public async Task Only_one_open_demand_per_identity_company_and_kind()
     {
-        // Two open requests for one exposure would send the same broker the same demand
-        // twice in one person's name. The lifecycle already loops on a single row.
+        // The rule used to be per listing, which cannot state itself once a demand may
+        // cite no listing. What it was really protecting against is telling one company
+        // the same thing twice about the same person.
         var account = await OpenAccountAsync();
         var exposure = await SeedExposureAsync(account, _brokerId);
 
@@ -208,6 +209,35 @@ public class RemovalRequestTests(PostgresFixture postgres, OpenBaoFixture openBa
             InsertRequestAsync(account, exposure, _brokerId));
 
         Assert.Equal(PostgresErrorCodes.UniqueViolation, refused.SqlState);
+    }
+
+    [Fact]
+    public async Task Two_demands_with_no_listing_collide_the_same_way()
+    {
+        // The case the old per-exposure index could not see at all: two null exposure ids
+        // are distinct to a unique index, so keying on the listing would have let a
+        // blanket demand go out twice over.
+        var account = await OpenAccountAsync();
+
+        await InsertRequestAsync(account, exposureId: null, _brokerId);
+
+        var refused = await Assert.ThrowsAsync<PostgresException>(() =>
+            InsertRequestAsync(account, exposureId: null, _brokerId));
+
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, refused.SqlState);
+    }
+
+    [Fact]
+    public async Task A_deletion_and_an_opt_out_may_be_open_at_once()
+    {
+        // Different rights, not duplicate demands. Some brokers answer one and not the
+        // other, and a person is entitled to ask for both.
+        var account = await OpenAccountAsync();
+
+        await InsertRequestAsync(account, exposureId: null, _brokerId, requestType: "delete");
+        await InsertRequestAsync(account, exposureId: null, _brokerId, requestType: "opt_out_sale");
+
+        Assert.Equal(2L, await RequestCountAsync(account.TenantId));
     }
 
     [Theory]
@@ -294,29 +324,171 @@ public class RemovalRequestTests(PostgresFixture postgres, OpenBaoFixture openBa
         Assert.Equal(PostgresErrorCodes.CheckViolation, refused.SqlState);
     }
 
+    [Fact]
+    public async Task A_demand_needs_no_listing_at_all()
+    {
+        // The point of the change. Nothing about the right to tell a broker to delete what
+        // it holds, or to stop selling it, depends on having found a page with somebody's
+        // name on it first — and a scan only ever sees what is publicly searchable.
+        var account = await OpenAccountAsync();
+
+        await InsertRequestAsync(account, exposureId: null, _brokerId);
+
+        var citations = await postgres.QueryAsOwnerAsync<long>(
+            $"SELECT count(*) FROM public.removal_request WHERE tenant_id = '{account.TenantId}' "
+            + "AND exposure_id IS NULL");
+
+        Assert.Equal(1L, citations);
+    }
+
+    [Fact]
+    public async Task A_demand_cannot_be_made_for_another_accounts_identity()
+    {
+        // The subject of a demand is now a column of its own, so it needs the same
+        // pinning every other cross-reference here has.
+        var mine = await OpenAccountAsync();
+        var theirs = await OpenAccountAsync();
+
+        var refused = await Assert.ThrowsAsync<PostgresException>(() =>
+            InsertRequestAsync(mine, exposureId: null, _brokerId, profileId: theirs.ProfileId));
+
+        Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, refused.SqlState);
+    }
+
+    [Fact]
+    public async Task A_demand_cannot_cite_a_listing_found_for_a_different_identity()
+    {
+        // Both identities belong to one account, so the tenant key does not notice. What
+        // it would mean is a form filled with one person's details, submitted citing a
+        // listing found for somebody else — a household managing a dependent's profile is
+        // exactly where this arises.
+        var account = await OpenAccountAsync();
+        var dependent = await AddDependentAsync(account);
+
+        var theirListing = await SeedExposureAsync(
+            account, _brokerId, profileId: dependent.ProfileId, scanId: dependent.ScanId);
+
+        var refused = await Assert.ThrowsAsync<PostgresException>(() =>
+            InsertRequestAsync(account, theirListing, _brokerId, profileId: account.ProfileId));
+
+        Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, refused.SqlState);
+    }
+
+    [Fact]
+    public async Task A_demand_citing_the_matching_identity_is_accepted()
+    {
+        // Guards the guard: a key that refused everything would pass the test above while
+        // breaking the ordinary case.
+        var account = await OpenAccountAsync();
+        var dependent = await AddDependentAsync(account);
+
+        var theirListing = await SeedExposureAsync(
+            account, _brokerId, profileId: dependent.ProfileId, scanId: dependent.ScanId);
+
+        await InsertRequestAsync(account, theirListing, _brokerId, profileId: dependent.ProfileId);
+
+        Assert.Equal(1L, await RequestCountAsync(account.TenantId));
+    }
+
+    [Fact]
+    public async Task A_listing_cannot_claim_an_identity_its_scan_was_not_searching_for()
+    {
+        // What holds up the test above. Pinning a demand to its listing's identity buys
+        // nothing if the listing's identity can itself disagree with the run that found
+        // it — the two keys are one guarantee in two halves.
+        var account = await OpenAccountAsync();
+        var dependent = await AddDependentAsync(account);
+
+        var refused = await Assert.ThrowsAsync<PostgresException>(() =>
+            SeedExposureAsync(account, _brokerId, profileId: dependent.ProfileId));
+
+        Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, refused.SqlState);
+    }
+
+    [Fact]
+    public async Task The_request_records_which_right_is_being_exercised()
+    {
+        // Not cosmetic. §11.2 picks the governing regime by intersecting residency, the
+        // broker's confirmed statutes and the kind of demand, and deletion and opt-out
+        // carry different deadlines under the same statute — so a stored deadline that did
+        // not say which demand it was computed for could not be read back against it.
+        var account = await OpenAccountAsync();
+
+        await InsertRequestAsync(
+            account, exposureId: null, _brokerId, requestType: "opt_out_targeted_ads");
+
+        var recorded = await postgres.QueryAsOwnerAsync<string>(
+            $"SELECT request_type FROM public.removal_request WHERE tenant_id = '{account.TenantId}'");
+
+        Assert.Equal("opt_out_targeted_ads", recorded);
+    }
+
+    [Fact]
+    public async Task A_request_type_outside_the_three_rights_is_refused()
+    {
+        var account = await OpenAccountAsync();
+
+        var refused = await Assert.ThrowsAsync<PostgresException>(() =>
+            InsertRequestAsync(account, exposureId: null, _brokerId, requestType: "stop_it"));
+
+        Assert.Equal(PostgresErrorCodes.CheckViolation, refused.SqlState);
+    }
+
+    /// <summary>
+    /// A second identity on the same account, as §16.2 allows, with a scan of its own.
+    /// </summary>
+    /// <remarks>
+    /// The scan is not incidental. An exposure's profile is pinned to the profile its scan
+    /// searched for, so a listing for this identity has to come from a run for this
+    /// identity — seeding one against the account's own scan is now refused, which is the
+    /// constraint doing its job on the fixture before it does it on the code.
+    /// </remarks>
+    private async Task<(Guid ProfileId, Guid ScanId)> AddDependentAsync(Account account)
+    {
+        var profileId = Guid.NewGuid();
+        var scanId = Guid.NewGuid();
+
+        await postgres.ExecuteAsOwnerAsync(
+            $"""
+             INSERT INTO public.privacy_profile
+                 (id, tenant_id, relationship_type, attestation_version)
+                 VALUES ('{profileId}', '{account.TenantId}', 'dependent', '2026-06-01');
+
+             INSERT INTO public.scan
+                 (id, tenant_id, privacy_profile_id, trigger, status)
+                 VALUES ('{scanId}', '{account.TenantId}', '{profileId}', 'manual', 'queued');
+             """);
+
+        return (profileId, scanId);
+    }
+
     private async Task<long> RequestCountAsync(Guid tenantId) =>
         await postgres.QueryAsOwnerAsync<long>(
             $"SELECT count(*) FROM public.removal_request WHERE tenant_id = '{tenantId}'");
 
     private async Task<Guid> InsertRequestAsync(
         Account account,
-        Guid exposureId,
+        Guid? exposureId,
         Guid brokerId,
         string status = "queued",
         string deadlineSource = "operational_default",
-        Guid? basisId = null)
+        Guid? basisId = null,
+        Guid? profileId = null,
+        string requestType = "delete")
     {
         var id = Guid.NewGuid();
         var basis = basisId is { } value ? $"'{value}'" : "NULL";
+        var exposure = exposureId is { } found ? $"'{found}'" : "NULL";
 
         await postgres.ExecuteAsOwnerAsync(
             $"""
              SET ROLE dbr_app;
              SELECT set_config('app.tenant_id', '{account.TenantId}', false);
              INSERT INTO public.removal_request
-                 (id, tenant_id, exposure_id, broker_id, status, strategy, attempt,
-                  legal_basis_id, deadline_source, deadline_at)
-                 VALUES ('{id}', '{account.TenantId}', '{exposureId}', '{brokerId}', '{status}',
+                 (id, tenant_id, privacy_profile_id, exposure_id, broker_id, request_type,
+                  status, strategy, attempt, legal_basis_id, deadline_source, deadline_at)
+                 VALUES ('{id}', '{account.TenantId}', '{profileId ?? account.ProfileId}',
+                         {exposure}, '{brokerId}', '{requestType}', '{status}',
                          'automated', 0, {basis}, '{deadlineSource}', now() + interval '45 days');
              """);
 
@@ -340,15 +512,20 @@ public class RemovalRequestTests(PostgresFixture postgres, OpenBaoFixture openBa
              """);
     }
 
-    private async Task<Guid> SeedExposureAsync(Account account, Guid brokerId)
+    private async Task<Guid> SeedExposureAsync(
+        Account account,
+        Guid brokerId,
+        Guid? profileId = null,
+        Guid? scanId = null)
     {
         var id = Guid.NewGuid();
 
         await postgres.ExecuteAsOwnerAsync(
             $"""
              INSERT INTO public.exposure
-                 (id, tenant_id, scan_id, broker_id, status, confidence)
-                 VALUES ('{id}', '{account.TenantId}', '{account.ScanId}', '{brokerId}', 'new', 0.9);
+                 (id, tenant_id, scan_id, privacy_profile_id, broker_id, status, confidence)
+                 VALUES ('{id}', '{account.TenantId}', '{scanId ?? account.ScanId}',
+                         '{profileId ?? account.ProfileId}', '{brokerId}', 'new', 0.9);
              """);
 
         return id;
@@ -369,8 +546,11 @@ public class RemovalRequestTests(PostgresFixture postgres, OpenBaoFixture openBa
 
         var (_, scan) = await _api.PostAsync("/api/v1/scans", new { }, token);
 
-        return new Account(ApiClient.TenantId(session), scan.GetProperty("id").GetGuid());
+        return new Account(
+            ApiClient.TenantId(session),
+            scan.GetProperty("id").GetGuid(),
+            scan.GetProperty("profileId").GetGuid());
     }
 
-    private sealed record Account(Guid TenantId, Guid ScanId);
+    private sealed record Account(Guid TenantId, Guid ScanId, Guid ProfileId);
 }

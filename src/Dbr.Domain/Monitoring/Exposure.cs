@@ -33,6 +33,17 @@ public class Exposure : ITenantScoped
     /// <summary>The run that found it.</summary>
     public required Guid ScanId { get; init; }
 
+    /// <summary>
+    /// Whose listing this is.
+    /// </summary>
+    /// <remarks>
+    /// Denormalized from the scan that found it, and pinned to it by a key over the pair
+    /// so the two cannot drift. Here rather than reached through the scan because a
+    /// removal request cites both an identity and, sometimes, a listing — and without this
+    /// there would be no way for the database to insist those two agree.
+    /// </remarks>
+    public required Guid PrivacyProfileId { get; init; }
+
     /// <summary>The broker it was found on.</summary>
     public required Guid BrokerId { get; init; }
 
