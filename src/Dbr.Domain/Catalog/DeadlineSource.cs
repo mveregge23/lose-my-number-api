@@ -20,11 +20,10 @@ namespace Dbr.Domain.Catalog;
 /// offer a distinction that changes nothing about what they can expect.
 /// </para>
 /// <para>
-/// Unlike the other catalog enums, this one has no entry in
-/// <see cref="CatalogVocabulary"/> yet. It is neither stored nor served — resolution
-/// hands it back as a value, and the column and the wire arrive together with the request
-/// that carries them. A spelling pinned before either exists would be a guess about two
-/// things at once.
+/// Its spelling was held back until something stored it, on the grounds that pinning one
+/// before a column and a wire format existed would be a guess about two things at once.
+/// <c>RemovalRequest</c> is that something, so <see cref="CatalogVocabulary"/> now carries
+/// it like every other catalog enum.
 /// </para>
 /// </remarks>
 public enum DeadlineSource

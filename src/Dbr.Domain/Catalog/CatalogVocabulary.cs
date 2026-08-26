@@ -126,6 +126,24 @@ public static class CatalogVocabulary
         _ => null,
     };
 
+    public static string ToWire(DeadlineSource source) => source switch
+    {
+        DeadlineSource.Statutory => "statutory",
+        DeadlineSource.OperationalDefault => "operational_default",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(source),
+            source,
+            "Unmapped deadline source. Adding one means a migration widening the check "
+            + "constraint on removal_request.deadline_source as well."),
+    };
+
+    public static DeadlineSource? ParseDeadlineSource(string? value) => value switch
+    {
+        "statutory" => DeadlineSource.Statutory,
+        "operational_default" => DeadlineSource.OperationalDefault,
+        _ => null,
+    };
+
     public static string ToWire(VerificationLevel level) => level switch
     {
         VerificationLevel.None => "none",
