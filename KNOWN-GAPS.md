@@ -114,6 +114,52 @@ would have had no content to apply and nothing to test against beyond fixtures.
 
 ---
 
+## Nothing searches a broker, and nothing was going to
+
+**Required by:** §6.4 makes a scan the act of asking a set of brokers what they hold about one
+identity, and §2 draws a scan worker as its own box alongside the removal worker. `Exposure` exists
+to hold what it finds, down to a `confidence` score for how sure the match is.
+
+**Today:** no code searches anything, and — until this entry was written — no plan did either. The
+design specifies the removal half in detail and never specifies the search half. §9's connector
+contract is not it: `ConnectorContext` carries a `RemovalRequestId` and a `SourceRef` read off an
+existing exposure, so a connector consumes exposures and cannot produce one. Nothing computes
+`Exposure.confidence`. A `scan` row therefore reaches `queued` and stays there permanently, and
+finishing the removal pipeline exactly as designed would not change that.
+
+**What closing it involves, roughly:** a search contract that is the mirror of `IBrokerConnector` —
+given a broker and a released identity, return candidate listings with a source reference and a
+confidence; a worker that consumes queued scans and fans out over the same per-broker lanes the
+removal side uses (§10.1); a recipe tier for search so most brokers are reviewed as data rather
+than code (§9.1); a rule for what makes a candidate an exposure and the floor below which nothing
+is shown, which is a product decision with a real cost in both directions; and a scan-scoped vault
+release, since §6.7's release names a `RemovalJob` and a search has no removal to name. It is also
+what would produce `encryptedSourceRef`, so the gap recorded below closes with it.
+
+**Worth being blunt about:** this is the product's first half. Everything in the repository today —
+the catalog, consent, jurisdiction resolution, the tenant boundary, the exposure surface, the
+monthly schedule — is real and tested, and none of it finds anything. Do not read a queued scan as
+work in progress; read it as work not yet designed.
+
+---
+
+## Verification scans are also unbuilt
+
+**Required by:** §5's lifecycle has two transitions that only a scan can drive —
+`AwaitingBrokerResponse → Removed` when a verification scan confirms a listing is gone, and
+`Removed → Reappeared` when a later one finds it again. The second is the reason the design insists
+removal is not fire-and-forget: brokers re-buy and re-scrape.
+
+**Today:** neither transition has anything behind it. Without them a removal request can never reach
+a terminal success state on evidence, and a listing that comes back is never noticed.
+
+**What closing it involves, roughly:** the same worker as the gap above, pointed at an exposure that
+already exists rather than at a fresh search, plus a decision about how long after a submission the
+first verification is worth running — which §9's `Success(ReceiptRef, VerifyNotBefore)` already
+anticipates a connector answering.
+
+---
+
 ## A scan is recorded but never runs
 
 **Required by:** §6.4 makes `POST /scans` a request to go and ask brokers what they hold, and §10.1
