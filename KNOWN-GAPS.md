@@ -163,9 +163,15 @@ existing exposure, so a connector consumes exposures and cannot produce one. Not
 `Exposure.confidence`. A `scan` row therefore reaches `queued` and stays there permanently, and
 finishing the removal pipeline exactly as designed would not change that.
 
+`IBrokerSearch` now says what a search would be asked and what it may answer, and **nothing
+implements it**. There is no engine, no worker calling one, and no registration — so the shape of
+the answer is settled and a scan still reaches `queued` and stops there. The first item below is
+the part that is done.
+
 **What closing it involves, roughly:** a search contract that is the mirror of `IBrokerConnector` —
-given a broker and a released identity, return candidate listings with a source reference and a
-confidence; a worker that consumes queued scans and fans out over the same per-broker lanes the
+given a broker and a released identity, return candidate listings with a source reference and what
+each one matched on, the score being left to the rule below rather than invented per broker; a
+worker that consumes queued scans and fans out over the same per-broker lanes the
 removal side uses (§10.1); a recipe tier for search so most brokers are reviewed as data rather
 than code (§9.1); a rule for what makes a candidate an exposure and the floor below which nothing
 is shown, which is a product decision with a real cost in both directions; and a scan-scoped vault
