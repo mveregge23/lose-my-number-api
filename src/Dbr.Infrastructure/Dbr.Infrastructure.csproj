@@ -13,6 +13,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          by hand-written SQL under /db/migrations, and leaving the design-time package
          out is what removes `dotnet ef migrations add` from the set of commands that
          can be run at all — rather than relying on people not running it. -->
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.5.9" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <!-- snake_case identifiers, so the EF model and the hand-written SQL describe
          the same names without quoting either side. A package rather than a

@@ -22,6 +22,13 @@ builder.Services.AddDbrPersistence(builder.Configuration);
 builder.Services.AddDbrConsent(builder.Configuration);
 builder.Services.AddDbrScanScheduling(builder.Configuration);
 
+// One lane per broker, paced by that broker's catalog row. No consumers yet: the two
+// kinds of work that will run in these lanes — asking a broker what it holds, and telling
+// it to stop — are their own stories, and a lane declared for a consumer that does not
+// exist would accept work nothing drains. What this gives them is somewhere to be
+// registered that already knows how fast each company may be spoken to.
+builder.Services.AddDbrMessaging(builder.Configuration);
+
 // Deliberately no key management here. This process drives browsers against
 // third-party sites, so a credential that can decrypt would be a standing decryption
 // right sitting in the most exposed part of the system. When a job needs a tenant's
