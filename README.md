@@ -1083,6 +1083,16 @@ Contributions are welcome. A few conventions worth knowing up front:
   design doc" is not, because it sends them somewhere they may not have and tells them nothing if
   they don't go. Where a decision has a longer story behind it, the commit message is the place for
   that — it stays attached to the change without cluttering the file.
+- **A third-party tool gets an interface of ours in front of it.** Anything we might one day
+  replace — the message bus, the key manager, the payment provider — is described in this
+  project's own terms first, and the library sits behind that description in one folder of its
+  own. Handlers take work and a cancellation token, not a `ConsumeContext`; composition roots name
+  a kind of work and something that handles it, not a consumer type. The point is not purity: it
+  is that swapping the tool should be one folder and one registration, and the seam has to exist
+  before the day it is needed, because on that day the choice is made by somebody else. It has
+  already happened twice here — HashiCorp Vault relicensed and was replaced by OpenBao, and
+  MassTransit v9 went commercial, which is why the pin is on the last Apache-2.0 line.
+  `VendorSeamTests` fails the build if the seam erodes.
 - **If your change affects how another developer runs this locally, update this README in the same
   PR.** New service, changed port, new required tool, new setup step, changed reset procedure — if
   someone with a fresh clone would hit it, it belongs here. A README that drifts from the compose

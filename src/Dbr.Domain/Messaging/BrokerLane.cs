@@ -26,7 +26,17 @@ namespace Dbr.Domain.Messaging;
 public sealed record BrokerLane(Guid BrokerId, int MaxConcurrency, TimeSpan MinDelay)
 {
     /// <summary>The queue this lane's work lands in.</summary>
-    public string QueueName => $"broker-{BrokerId:D}";
+    public string QueueName => QueueNameFor(BrokerId);
+
+    /// <summary>
+    /// Where a broker's work goes, derivable without knowing how that broker is paced.
+    /// </summary>
+    /// <remarks>
+    /// Static because the sending side has a message and needs a destination, and has no
+    /// business reading the catalog to find one. Both sides deriving the name from the same
+    /// id is what makes them agree.
+    /// </remarks>
+    public static string QueueNameFor(Guid brokerId) => $"broker-{brokerId:D}";
 }
 
 /// <summary>

@@ -4,53 +4,38 @@
 using Dbr.Domain.Messaging;
 using MassTransit;
 
-namespace Dbr.Infrastructure.Messaging;
-
-/// <summary>
-/// What runs in every broker's lane.
-/// </summary>
-/// <remarks>
-/// Consumers are named here rather than being discovered, because a consumer that ends up
-/// in a per-broker lane by accident is a consumer being paced by a rule that has nothing
-/// to do with it — and one that misses the lane talks to a broker at whatever speed it
-/// likes. Both failures are invisible until a broker complains.
-/// </remarks>
-public sealed class BrokerLaneRegistrations
-{
-    internal List<Action<IBusRegistrationConfigurator>> Registrations { get; } = [];
-
-    internal List<Action<IReceiveEndpointConfigurator, IBusRegistrationContext>> Bindings { get; } = [];
-
-    /// <summary>Runs this consumer in every broker's lane.</summary>
-    public BrokerLaneRegistrations Consume<TConsumer>()
-        where TConsumer : class, IConsumer
-    {
-        Registrations.Add(bus => bus.AddConsumer<TConsumer>());
-        Bindings.Add((endpoint, context) => endpoint.ConfigureConsumer<TConsumer>(context));
-
-        return this;
-    }
-}
+namespace Dbr.Infrastructure.Messaging.MassTransitBus;
 
 /// <summary>
 /// Builds one receive endpoint per broker, paced by that broker's catalog row.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Written against <see cref="IBusFactoryConfigurator"/> rather than against RabbitMQ's,
-/// which is what lets the pacing and concurrency be exercised over an in-memory bus in a
-/// test and over RabbitMQ in the worker without two descriptions of the same arrangement.
-/// The transport is a deployment choice; the shape of the lanes is not.
+/// Written against <see cref="IBusFactoryConfigurator"/> rather than RabbitMQ's, which is
+/// what lets the arrangement be exercised over an in-memory bus in a test and over
+/// RabbitMQ in the worker without two descriptions of the same thing.
 /// </para>
 /// <para>
 /// One endpoint per broker rather than one endpoint partitioned by broker, because the
 /// pacing differs per broker and a partitioner takes a single concurrency setting for all
-/// of them. A few hundred queues is an ordinary number for RabbitMQ; a shared endpoint
-/// that paced every company at whatever the twitchiest one needs is not an ordinary trade.
+/// of them. A few hundred queues is an ordinary number for RabbitMQ; pacing every company
+/// at whatever the twitchiest one needs is not an ordinary trade.
 /// </para>
 /// </remarks>
 public static class BrokerLaneEndpoints
 {
+    /// <summary>Registers the consumers each piece of registered work needs.</summary>
+    public static void Register(IBusRegistrationConfigurator bus, BrokerLaneRegistrations registrations)
+    {
+        ArgumentNullException.ThrowIfNull(bus);
+        ArgumentNullException.ThrowIfNull(registrations);
+
+        foreach (var work in registrations.Work)
+        {
+            bus.AddConsumer(typeof(BrokerWorkConsumer<>).MakeGenericType(work.Work));
+        }
+    }
+
     /// <summary>Declares a lane for each broker.</summary>
     public static void Configure(
         IBusFactoryConfigurator bus,
@@ -63,13 +48,13 @@ public static class BrokerLaneEndpoints
         ArgumentNullException.ThrowIfNull(lanes);
         ArgumentNullException.ThrowIfNull(registrations);
 
-        if (registrations.Bindings.Count == 0)
+        if (registrations.Work.Count == 0)
         {
             // Nothing to run in them, so no lanes. A queue standing open with nothing
             // draining it is worse than no queue: work would be accepted, acknowledged by
             // the transport, and sit there — which looks like a slow broker rather than
             // like a missing consumer. The bus still starts, so a process that only
-            // publishes has somewhere to publish to.
+            // dispatches has somewhere to dispatch to.
             return;
         }
 
@@ -84,15 +69,17 @@ public static class BrokerLaneEndpoints
                 // Prefetch is held to the concurrency limit rather than left at the
                 // transport default. A lane allowed one job at a time that had pulled
                 // thirty into memory would still run them one at a time, and would also
-                // have taken thirty jobs off the queue that a second worker could have
-                // been getting on with.
+                // have taken thirty off the queue that a second worker could have been
+                // getting on with.
                 endpoint.PrefetchCount = lane.MaxConcurrency;
 
-                endpoint.UseFilter(new BrokerPacingFilter(lane));
+                endpoint.UseFilter(new BrokerPacingFilter(new BrokerPacer(lane)));
 
-                foreach (var bind in registrations.Bindings)
+                foreach (var work in registrations.Work)
                 {
-                    bind(endpoint, context);
+                    endpoint.ConfigureConsumer(
+                        context,
+                        typeof(BrokerWorkConsumer<>).MakeGenericType(work.Work));
                 }
             });
         }

@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using Dbr.Domain.Messaging;
 using Dbr.Infrastructure.Messaging;
+using Dbr.Infrastructure.Messaging.MassTransitBus;
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -148,16 +149,17 @@ public class BrokerLaneTests
 
     private static ServiceProvider BuildBus(ArrivalLog probe, params BrokerLane[] lanes)
     {
-        var registrations = new BrokerLaneRegistrations().Consume<PacingProbeConsumer>();
+        // Registered in the project's own terms — a kind of work and something that
+        // handles it. Nothing here names the library that carries the message, which is
+        // the point of the seam being where it is.
+        var registrations = new BrokerLaneRegistrations().Handle<PacingProbe, PacingProbeHandler>();
 
         return new ServiceCollection()
             .AddSingleton(probe)
+            .AddScoped<IBrokerWorkHandler<PacingProbe>, PacingProbeHandler>()
             .AddMassTransit(bus =>
             {
-                foreach (var register in registrations.Registrations)
-                {
-                    register(bus);
-                }
+                BrokerLaneEndpoints.Register(bus, registrations);
 
                 bus.UsingInMemory((context, cfg) =>
                     BrokerLaneEndpoints.Configure(cfg, context, lanes, registrations));
@@ -179,10 +181,13 @@ public class BrokerLaneTests
 
     private sealed record PacingProbe(Guid BrokerId) : IBrokerScopedMessage;
 
-    private sealed class PacingProbeConsumer(ArrivalLog log) : IConsumer<PacingProbe>
+    /// <summary>
+    /// A handler, not a consumer — no message context, no transport type, just the work.
+    /// </summary>
+    private sealed class PacingProbeHandler(ArrivalLog log) : IBrokerWorkHandler<PacingProbe>
     {
-        public async Task Consume(ConsumeContext<PacingProbe> context) =>
-            await log.RecordAsync(context.Message.BrokerId);
+        public async Task HandleAsync(PacingProbe work, CancellationToken cancellationToken) =>
+            await log.RecordAsync(work.BrokerId);
     }
 
     /// <summary>When each job started, and how many were running at once.</summary>
