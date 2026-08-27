@@ -114,6 +114,42 @@ would have had no content to apply and nothing to test against beyond fixtures.
 
 ---
 
+## The catalog has no companies in it
+
+**Required by:** §6.3 makes the broker catalog the reference data every scan and removal request
+resolves against, and §9.1 expects it to reach the hundreds. `broker` is where a company's domain,
+opt-out method, courtesy SLA and pacing live, and `broker_legal_basis` is where somebody records
+that a given statute reaches a given company.
+
+**Today:** both tables are empty, and nothing fills them. There is no `catalog/brokers/` directory,
+no migration inserts a broker row, and `catalog-sync` reads legal-basis content only. Fifteen
+legal-basis rows ship; zero companies do.
+
+This is worth spelling out because the rest of the system looks finished around it. Concretely:
+
+- A scan that is not narrowed means "the whole catalog", which is nothing. It completes and finds
+  nothing, and that is indistinguishable from a clean bill of health.
+- The per-broker queue lanes declare **zero endpoints** — the lane directory reads active brokers
+  from an empty table. The pacing works; there is nothing to pace.
+- A removal request has no company to be addressed to.
+- With no `broker_legal_basis` rows, jurisdiction resolution always falls back to the broker's
+  operational default, so **no statutory deadline is reachable at all** however many jurisdictions
+  get seeded. The deadline machinery is complete and permanently on its fallback path.
+
+**What closing it involves, roughly:** three separate kinds of work. A broker sync — file schema,
+validator, a `source` column on `broker`, and the same upsert-and-retract pass legal-basis content
+gets, with the wrinkle that pacing fields are what an operator would most want to tune locally, so
+all-or-nothing ownership may be too coarse. A decision about where a `broker_legal_basis`
+confirmation lives — the broker's file, the regime's, or its own — which is what makes retracting a
+regime fail today. And then the content itself: domain, removal method, opt-out URL, SLA, contact
+mode and pacing, read off real sites and cited, which is research rather than programming and is the
+long pole.
+
+Fixtures stand in for a company in tests, so this does not block building the search or the
+connectors. It blocks anything running against a real one.
+
+---
+
 ## Nothing searches a broker, and nothing was going to
 
 **Required by:** §6.4 makes a scan the act of asking a set of brokers what they hold about one
