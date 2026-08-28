@@ -3,6 +3,7 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using Dbr.Domain.Profiles;
 using Dbr.Domain.Vault;
 using Dbr.Infrastructure.Vault;
 
@@ -30,7 +31,7 @@ public class ProfileCipherTests
 
     private static readonly byte[] Plaintext = Encoding.UTF8.GetBytes("[\"Alex Whitfield\"]");
 
-    private static ProfileFieldBinding Names => new(Tenant, Profile, ProfileField.Names);
+    private static ProfileFieldBinding Names => new(Tenant, Profile, IdentityField.Names);
 
     [Fact]
     public void A_round_trip_returns_what_went_in()
@@ -72,7 +73,7 @@ public class ProfileCipherTests
         var stored = ProfileCipher.Encrypt(key, Names, Plaintext);
 
         Assert.Throws<AuthenticationTagMismatchException>(() =>
-            ProfileCipher.Decrypt(key, new ProfileFieldBinding(Tenant, Profile, ProfileField.Contacts), stored));
+            ProfileCipher.Decrypt(key, new ProfileFieldBinding(Tenant, Profile, IdentityField.Contacts), stored));
     }
 
     [Fact]
@@ -87,7 +88,7 @@ public class ProfileCipherTests
         var stored = ProfileCipher.Encrypt(key, Names, Plaintext);
 
         Assert.Throws<AuthenticationTagMismatchException>(() =>
-            ProfileCipher.Decrypt(key, new ProfileFieldBinding(Tenant, OtherProfile, ProfileField.Names), stored));
+            ProfileCipher.Decrypt(key, new ProfileFieldBinding(Tenant, OtherProfile, IdentityField.Names), stored));
     }
 
     [Fact]
@@ -98,7 +99,7 @@ public class ProfileCipherTests
         var stored = ProfileCipher.Encrypt(key, Names, Plaintext);
 
         Assert.Throws<AuthenticationTagMismatchException>(() =>
-            ProfileCipher.Decrypt(key, new ProfileFieldBinding(OtherTenant, Profile, ProfileField.Names), stored));
+            ProfileCipher.Decrypt(key, new ProfileFieldBinding(OtherTenant, Profile, IdentityField.Names), stored));
     }
 
     [Fact]
@@ -146,6 +147,56 @@ public class ProfileCipherTests
 
         Assert.Throws<CryptographicException>(() =>
             ProfileCipher.Decrypt(key, Names, [ProfileCipher.Version, 1, 2, 3]));
+    }
+
+    /// <summary>
+    /// The exact text a ciphertext is bound to, written out by hand.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The associated data is authenticated but not stored, so it is not recoverable
+    /// from a ciphertext &mdash; it has to be reproduced byte for byte to decrypt. That
+    /// makes every part of it stored data: the prefix, the version, the two ids, and
+    /// <b>the name of the enum member</b>. Renaming <c>Names</c> would compile, would
+    /// pass every other test in this file because they encrypt and decrypt in the same
+    /// process, and would fail to open every row already in the database.
+    /// </para>
+    /// <para>
+    /// So this decrypts with a hand-built <see cref="AesGcm"/> against a literal, which
+    /// is the only way to assert the text rather than assert that it is consistent with
+    /// itself. If this fails, the format changed: either the change is intended and this
+    /// literal moves with a migration re-encrypting what exists, or it was a rename that
+    /// would have gone unnoticed until somebody asked for their own name back.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void The_binding_is_exactly_this_text()
+    {
+        const int nonceSize = 12;
+        const int tagSize = 16;
+
+        using var key = NewKey();
+
+        var stored = ProfileCipher.Encrypt(key, Names, Plaintext);
+
+        var expected = Encoding.UTF8.GetBytes(
+            "dbr/profile-identity/1/"
+            + "11111111-1111-1111-1111-111111111111/"
+            + "33333333-3333-3333-3333-333333333333/"
+            + "Names");
+
+        var payloadLength = stored.Length - 1 - nonceSize - tagSize;
+        var plaintext = new byte[payloadLength];
+
+        using var aes = new AesGcm(key.Material, tagSize);
+        aes.Decrypt(
+            stored.AsSpan(1, nonceSize),
+            stored.AsSpan(1 + nonceSize, payloadLength),
+            stored.AsSpan(1 + nonceSize + payloadLength, tagSize),
+            plaintext,
+            expected);
+
+        Assert.Equal(Plaintext, plaintext);
     }
 
     private static DataKey NewKey() => new(RandomNumberGenerator.GetBytes(32));

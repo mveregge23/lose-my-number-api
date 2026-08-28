@@ -295,11 +295,11 @@ public sealed class ProfileService(
             .ConfigureAwait(false);
 
         return new ProfileIdentityFields(
-            Read<List<string>>(key, tenantId, profileId, ProfileField.Names, identity.EncryptedNames),
-            Read<List<ProfileAddress>>(key, tenantId, profileId, ProfileField.Addresses, identity.EncryptedAddresses),
-            Read<List<ProfileContact>>(key, tenantId, profileId, ProfileField.Contacts, identity.EncryptedContacts),
+            Read<List<string>>(key, tenantId, profileId, IdentityField.Names, identity.EncryptedNames),
+            Read<List<ProfileAddress>>(key, tenantId, profileId, IdentityField.Addresses, identity.EncryptedAddresses),
+            Read<List<ProfileContact>>(key, tenantId, profileId, IdentityField.Contacts, identity.EncryptedContacts),
             identity.EncryptedDob is { } dob
-                ? Read<DateOnly>(key, tenantId, profileId, ProfileField.DateOfBirth, dob)
+                ? Read<DateOnly>(key, tenantId, profileId, IdentityField.DateOfBirth, dob)
                 : null);
     }
 
@@ -355,11 +355,11 @@ public sealed class ProfileService(
 
         return new EncryptedIdentity(
             generated.Wrapped,
-            Write(key, tenantId, profileId, ProfileField.Names, fields.Names),
-            Write(key, tenantId, profileId, ProfileField.Addresses, fields.Addresses),
-            Write(key, tenantId, profileId, ProfileField.Contacts, fields.Contacts),
+            Write(key, tenantId, profileId, IdentityField.Names, fields.Names),
+            Write(key, tenantId, profileId, IdentityField.Addresses, fields.Addresses),
+            Write(key, tenantId, profileId, IdentityField.Contacts, fields.Contacts),
             fields.DateOfBirth is { } dob
-                ? Write(key, tenantId, profileId, ProfileField.DateOfBirth, dob)
+                ? Write(key, tenantId, profileId, IdentityField.DateOfBirth, dob)
                 : null);
     }
 
@@ -367,7 +367,7 @@ public sealed class ProfileService(
         DataKey key,
         Guid tenantId,
         Guid profileId,
-        ProfileField field,
+        IdentityField field,
         TValue value) =>
         ProfileCipher.Encrypt(
             key,
@@ -385,7 +385,7 @@ public sealed class ProfileService(
         DataKey key,
         Guid tenantId,
         Guid profileId,
-        ProfileField field,
+        IdentityField field,
         byte[] stored) =>
         JsonSerializer.Deserialize<TValue>(
             ProfileCipher.Decrypt(key, new ProfileFieldBinding(tenantId, profileId, field), stored),

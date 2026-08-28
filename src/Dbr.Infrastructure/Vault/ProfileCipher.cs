@@ -3,29 +3,32 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using Dbr.Domain.Profiles;
 using Dbr.Domain.Vault;
 
 namespace Dbr.Infrastructure.Vault;
-
-/// <summary>Which field of a profile a ciphertext holds.</summary>
-public enum ProfileField
-{
-    Names,
-    Addresses,
-    Contacts,
-    DateOfBirth,
-}
 
 /// <summary>
 /// Everything a ciphertext is allowed to be: this field, of this profile, of this
 /// tenant.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Passed to both halves of the cipher and mixed into the authentication tag, so the
 /// three facts are checked cryptographically rather than assumed. See
 /// <see cref="ProfileCipher"/> for what that buys.
+/// </para>
+/// <para>
+/// <b>The field's member name is stored data, not just a label.</b> It goes into the
+/// associated data as text, so every ciphertext ever written carries the spelling that
+/// was current when it was written. Renaming a member of
+/// <see cref="IdentityField"/> would not fail to compile and would not fail a round
+/// trip in one process &mdash; it would fail to decrypt everything already in the
+/// database, at the moment somebody asked for their own name back. A test pins the
+/// exact bytes so that a rename is a red build instead.
+/// </para>
 /// </remarks>
-public sealed record ProfileFieldBinding(Guid TenantId, Guid PrivacyProfileId, ProfileField Field);
+public sealed record ProfileFieldBinding(Guid TenantId, Guid PrivacyProfileId, IdentityField Field);
 
 /// <summary>
 /// Field-level encryption under a profile's data key.
