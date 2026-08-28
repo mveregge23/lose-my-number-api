@@ -190,6 +190,13 @@ services:
       # the identity in their profile is their own. The API refuses to start without
       # it, for the same reason it refuses without the terms version.
       Consent__PolicyVersion: ${CONSENT_POLICY_VERSION:-2026-06-01}
+      # How long a scoped release of somebody's identity stays redeemable. Set here
+      # rather than left to the built-in default so that it is discoverable: a setting
+      # nobody can find is a setting nobody tunes. Raise it only if legs of work are
+      # genuinely waiting longer than this for a busy broker's lane, and not by much —
+      # a grant that outlives the work it was minted for is a queued message carrying a
+      # standing right to decrypt. The API refuses to start above one hour.
+      IdentityRelease__Lifetime: ${IDENTITY_RELEASE_LIFETIME:-00:05:00}
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:

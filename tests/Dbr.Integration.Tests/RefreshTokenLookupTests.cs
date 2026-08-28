@@ -146,8 +146,13 @@ public class RefreshTokenLookupTests(PostgresFixture postgres) : IAsyncLifetime
     public async Task Nothing_else_has_been_let_through_the_boundary()
     {
         // The count is the test. Each of these is a deliberate hole in the tenant
-        // boundary with an argument behind it; a third appearing without this failing
+        // boundary with an argument behind it; a fourth appearing without this failing
         // would mean one was added without anyone weighing that argument again.
+        //
+        // The third was weighed here: releasing part of an identity to a process that
+        // holds no keys needs the same resolution before any tenant is established, and
+        // it earns the same exception the other two do for the same reason — its argument
+        // is an unguessable secret rather than an id somebody was handed.
         var definers = await postgres.QueryAsOwnerAsync<string[]>(
             """
             SELECT array_agg(p.proname ORDER BY p.proname)
@@ -158,6 +163,6 @@ public class RefreshTokenLookupTests(PostgresFixture postgres) : IAsyncLifetime
             """);
 
         Assert.NotNull(definers);
-        Assert.Equal(["find_passkey", "find_refresh_token"], definers);
+        Assert.Equal(["find_identity_release", "find_passkey", "find_refresh_token"], definers);
     }
 }
