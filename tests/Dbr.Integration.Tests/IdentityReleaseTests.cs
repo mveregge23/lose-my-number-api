@@ -199,7 +199,7 @@ public class IdentityReleaseTests(PostgresFixture postgres, OpenBaoFixture openB
 
         var results = await Task.WhenAll(racers);
 
-        Assert.Single(results.Where(result => result.Outcome == RedeemReleaseOutcome.Granted));
+        Assert.Single(results, result => result.Outcome == RedeemReleaseOutcome.Granted);
     }
 
     [Fact]
