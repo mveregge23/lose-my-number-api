@@ -24,9 +24,11 @@ namespace Dbr.Integration.Tests;
 /// database that can actually run two statements.
 /// </para>
 /// <para>
-/// Nothing here goes over HTTP, because there is no route yet — the listener a worker
-/// would call is its own story. What that changes is only how the service is reached; the
-/// service, the database, the vault and the key manager are all the real ones.
+/// Nothing here goes over HTTP, and that is now a choice rather than a limitation: the
+/// route a worker calls exists, and is covered by its own tests. These reach the service
+/// directly because what they are about is the grant — what it opens, what it refuses,
+/// what the database will not let anybody change about it — and a transport in the middle
+/// would only add ways for them to fail for unrelated reasons.
 /// </para>
 /// </remarks>
 [Collection(ProfileVaultCollection.Name)]
