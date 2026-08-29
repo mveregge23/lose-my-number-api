@@ -101,6 +101,24 @@ services:
       openbao:
         condition: service_healthy
 
+  # One-shot: issues a development certificate authority, a server certificate for the
+  # API's internal listener, and a client certificate for the worker. Idempotent, and it
+  # reissues when they are about to expire.
+  #
+  # It runs on the postgres image, which is already pulled for this stack and carries
+  # openssl. Adding an image for three certificates would be one more thing to pin, one
+  # more registry to depend on, and one more supply chain to trust — for a tool that is
+  # already sitting there.
+  pki-init:
+    image: postgres:17
+    restart: "no"
+    volumes:
+      - ./pki/init.sh:/init.sh:ro
+      # Keys and certificates land here, on the host, gitignored. Local-dev convenience
+      # only — see the warning at the top of init.sh.
+      - ./.pki:/pki
+    entrypoint: ["/bin/sh", "/init.sh"]
+
   # One-shot: applies db/migrations/core then db/migrations/vault and exits. The only
   # thing in the system that ever changes the schema. API and Worker gate on it
   # completing successfully, so `docker compose up` migrates before either service
@@ -197,6 +215,29 @@ services:
       # a grant that outlives the work it was minted for is a queued message carrying a
       # standing right to decrypt. The API refuses to start above one hour.
       IdentityRelease__Lifetime: ${IDENTITY_RELEASE_LIFETIME:-00:05:00}
+      # The second listener, which the workers call and nothing else does. It is not in
+      # the ports list below on purpose: it is reachable from inside the compose network
+      # and from nowhere on the host, so a mistake in the certificate configuration
+      # cannot expose it to the machine the stack is running on.
+      #
+      # Both ports are named because naming one takes over — Kestrel prefers endpoints
+      # configured in code to the addresses the host was launched with, so setting only
+      # the internal one would unbind the public one.
+      InternalEdge__Enabled: "true"
+      InternalEdge__Port: "8443"
+      InternalEdge__PublicPort: "8080"
+      InternalEdge__ServerCertificatePath: /pki/server.crt
+      InternalEdge__ServerKeyPath: /pki/server.key
+      # The authority a client certificate has to chain to, and the name it has to
+      # carry. The name is the difference between "signed by us" and "is our worker".
+      InternalEdge__ClientCertificateAuthorityPath: /pki/ca.crt
+      InternalEdge__ClientCertificateCommonName: dbr-worker
+    volumes:
+      # Read-only, and the API reads its own key plus the authority. It has no business
+      # writing here and no need for the worker's key, but a bind mount is the whole
+      # directory either way — which is one of several reasons this arrangement is a
+      # development convenience rather than a deployment.
+      - ./.pki:/pki:ro
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -204,6 +245,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      pki-init:
+        condition: service_completed_successfully
       openbao-init:
         condition: service_completed_successfully
       migrator:
@@ -235,14 +278,29 @@ services:
       # No key-manager credentials and no vault connection string, deliberately. Workers
       # talk to third-party broker sites, and either of those is a standing decryption
       # right — exactly what a compromised worker should not be able to hand over. When a
-      # worker needs a tenant's fields it will ask for a short-lived, single-job release
-      # of only those fields, and the service holding both will decide whether to grant
-      # it.
+      # worker needs a tenant's fields it asks for a short-lived, single-job release of
+      # only those fields, and the service holding both decides whether to grant it.
+      #
+      # These settings are that asking, and they are the whole of it: an address, a
+      # certificate saying which machine this is, and the authority that certificate's
+      # counterpart has to chain to. Nothing here can decrypt anything on its own.
+      InternalApi__Enabled: "true"
+      InternalApi__BaseAddress: https://api:8443
+      InternalApi__ClientCertificatePath: /pki/worker.crt
+      InternalApi__ClientKeyPath: /pki/worker.key
+      # The worker checks the listener as strictly as the listener checks the worker.
+      # Without this the handshake would be one-directional in practice, and anything
+      # that could occupy the address would be handed a grant token.
+      InternalApi__ServerCertificateAuthorityPath: /pki/ca.crt
+    volumes:
+      - ./.pki:/pki:ro
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      pki-init:
+        condition: service_completed_successfully
       openbao-init:
         condition: service_completed_successfully
       migrator:

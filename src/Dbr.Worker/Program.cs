@@ -32,8 +32,15 @@ builder.Services.AddDbrMessaging(builder.Configuration);
 // Deliberately no key management here. This process drives browsers against
 // third-party sites, so a credential that can decrypt would be a standing decryption
 // right sitting in the most exposed part of the system. When a job needs a tenant's
-// fields, it will ask for a short-lived release of only those fields from the service
-// that does hold the keys — which can refuse, and can record that it was asked.
+// fields, it asks for a short-lived release of only those fields from the service
+// that does hold the keys — which can refuse, and records that it was asked.
+//
+// This is that asking, and it is the whole of this process's reach into the vault: one
+// grant at a time, to one address, holding a certificate that says which machine it is.
+// It cannot enumerate grants, choose a different one, or ask for more of an identity
+// than the grant it holds was minted for.
+builder.Services.AddDbrInternalApiClient(builder.Configuration);
+
 builder.Services.AddHostedService<Worker>();
 
 var schedule = new ScanScheduleOptions();

@@ -4,6 +4,7 @@
 using System.Text.Json.Serialization;
 using Dbr.Api.Authentication;
 using Dbr.Api.Endpoints;
+using Dbr.Api.InternalEdge;
 using Dbr.Infrastructure.DependencyInjection;
 
 // The self-hosted composition root. The hosted build differs only in which
@@ -28,11 +29,12 @@ builder.Services.AddDbrMonitoring();
 
 // Here and not in the worker, which is the whole point of it. This process holds the
 // vault connection and the key-manager token, so it is the one that can turn a grant into
-// plaintext; the process that talks to broker sites holds neither and asks this one. No
-// route exposes it yet — the listener a worker would call is its own story — so what this
-// registration buys today is that minting and redeeming are exercised against the real
-// database rather than against a stand-in.
+// plaintext; the process that talks to broker sites holds neither and asks this one.
 builder.Services.AddDbrIdentityReleases(builder.Configuration);
+
+// Where it asks. Off unless this deployment has been given certificates, in which case
+// there is no internal listener and the routes behind it are mapped nowhere at all.
+builder.AddDbrInternalEdge();
 
 builder.Services.AddDbrBearerAuthentication();
 
@@ -47,6 +49,19 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow);
 
 var app = builder.Build();
+
+// Before everything public, and that ordering is the point. A connection arriving on the
+// internal listener turns off into its own branch here and never runs a step of the
+// pipeline below — no bearer authentication, no tenant middleware, no public route table.
+// The two edges share a process and a container; they do not share a request path.
+app.UseDbrInternalEdge();
+
+// Explicit, and deliberately after the branch above. Left implicit, the host inserts
+// routing at the very front of the pipeline, where it matches a public route before the
+// internal branch has been entered — the branch then has to undo that match rather than
+// simply not make it. Both halves are in place; this is the one that means an internal
+// request never touches the public route table at all.
+app.UseRouting();
 
 // Order is the whole of this. Authentication decides whether the caller holds a valid
 // token; the tenant step turns what it found into the account this request acts for,

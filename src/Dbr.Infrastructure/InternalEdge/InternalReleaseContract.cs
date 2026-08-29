@@ -1,0 +1,81 @@
+// SPDX-FileCopyrightText: 2026 Max Veregge
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+namespace Dbr.Infrastructure.InternalEdge;
+
+/// <summary>
+/// What a worker presents to spend a grant.
+/// </summary>
+/// <remarks>
+/// One field, and it is a bearer credential for part of somebody's identity — so this
+/// withholds it from <see cref="ToString"/> like the identity types do. A record prints
+/// every member it has, which puts a token one interpolation away from a log line.
+/// </remarks>
+public sealed record ReleaseRequest(string Token)
+{
+    public override string ToString() => "ReleaseRequest { [withheld] }";
+}
+
+/// <summary>One address, as it crosses the internal edge.</summary>
+public sealed record ReleasedAddress(
+    Guid Id,
+    string Line1,
+    string? Line2,
+    string City,
+    string? Region,
+    string? PostalCode,
+    string Country)
+{
+    /// <inheritdoc cref="ReleaseResponse.ToString"/>
+    public override string ToString() => $"ReleasedAddress {{ Id = {Id}, [withheld] }}";
+}
+
+/// <summary>One contact point, as it crosses the internal edge.</summary>
+/// <param name="Kind">
+/// <c>email</c> or <c>phone</c>, spelled the way the public API already spells it — one
+/// vocabulary for the same fact, rather than a second one that has to be kept in step.
+/// </param>
+public sealed record ReleasedContact(Guid Id, string Kind, string Value)
+{
+    /// <inheritdoc cref="ReleaseResponse.ToString"/>
+    public override string ToString() => $"ReleasedContact {{ Id = {Id}, Kind = {Kind}, [withheld] }}";
+}
+
+/// <summary>
+/// A spent grant, and the part of an identity it opened.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The most sensitive thing this system puts on a wire, and it goes over one connection
+/// only: a listener the public edge does not share, to a caller that proved which machine
+/// it is before the request line was read.
+/// </para>
+/// <para>
+/// <see cref="Fields"/> is what the grant covered, echoed back rather than inferred. A
+/// group that comes back empty is either one the grant did not name or one the profile has
+/// nothing in, and those are the same answer for matching purposes — but a worker deciding
+/// what it can attempt is entitled to know which fields it was actually given.
+/// </para>
+/// </remarks>
+public sealed record ReleaseResponse(
+    Guid ScanId,
+    Guid BrokerId,
+    IReadOnlyList<string> Fields,
+    IReadOnlyList<string> Names,
+    IReadOnlyList<ReleasedAddress> Addresses,
+    IReadOnlyList<ReleasedContact> Contacts,
+    DateOnly? DateOfBirth)
+{
+    /// <summary>
+    /// Names the type, counts what it holds, and prints none of it.
+    /// </summary>
+    /// <remarks>
+    /// The same refusal the vault-side identity types carry. This one matters more than
+    /// most: it is handled by the process that also runs third-party page scripts, which
+    /// is the last place a name should end up in a log line.
+    /// </remarks>
+    public override string ToString() =>
+        $"ReleaseResponse {{ ScanId = {ScanId}, BrokerId = {BrokerId}, "
+        + $"Fields = {Fields.Count}, Names = {Names.Count}, Addresses = {Addresses.Count}, "
+        + $"Contacts = {Contacts.Count}, [withheld] }}";
+}

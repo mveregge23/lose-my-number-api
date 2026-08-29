@@ -92,10 +92,11 @@ laptop.
 | `rabbitmq` | `rabbitmq:4-management-alpine` | Job queue |
 | `openbao` | `openbao/openbao:2` | Key management — per-tenant envelope encryption |
 | `openbao-init` | `openbao/openbao:2` | One-shot: initializes/unseals OpenBao, then exits |
+| `pki-init` | `postgres:17` | One-shot: issues the development certificates for the internal edge, then exits |
 | `migrator` | built from `src/Dbr.Migrator` | One-shot: applies database migrations, then exits |
 | `catalog-sync` | built from `src/Dbr.CatalogSync` | One-shot: applies the curated catalog files, then exits |
 
-`openbao-init`, `migrator` and `catalog-sync` exiting is normal and expected — they are one-shot jobs, not
+`pki-init`, `openbao-init`, `migrator` and `catalog-sync` exiting is normal and expected — they are one-shot jobs, not
 services. `api` and `worker` wait for all three to finish *successfully* before they start, so a
 failed migration stops the stack instead of letting the application run against a schema it
 doesn't match — and a catalog that will not apply stops it instead of letting the application
@@ -351,6 +352,44 @@ Two answers are worth knowing about in advance:
 What a profile may hold is capped — names, contacts and addresses each have a limit, and so do
 the field lengths. Ordinary tables get that from the schema; these are encrypted columns the
 database cannot read, so the limits live in the API and are the whole of the ceiling.
+
+### How a worker gets part of an identity
+
+The worker holds no key-manager credentials and no vault connection string. That is deliberate: it
+is the process that drives browsers against third-party sites, so a credential that could decrypt
+would be a standing decryption right sitting in the most exposed part of the system. When a job
+needs somebody's name, it asks the API for it.
+
+That asking crosses a second listener, which exists only for this:
+
+```
+worker  ──mutual TLS──>  api:8443  /internal/v1/vault/release
+                         (not published to your host)
+```
+
+Three things make it a boundary rather than a door with a sign on it:
+
+- **The routes are absent from the public listener, not refused by it.** They are mapped inside a
+  branch only a connection arriving on the internal port enters, so `POST /internal/v1/vault/release`
+  on port 8080 gets a plain `404` — the same answer as a path nobody ever wrote. A route that
+  existed and answered `403` would advertise itself, and would be one misconfiguration away from
+  answering `200`. It runs the other way too: the public routes are absent from the internal
+  listener.
+- **A certificate says which machine is calling.** The listener requires a client certificate,
+  checks it chains to the authority this deployment named — not the machine's trust store, which
+  would accept a certificate anybody could buy — and checks its common name. Both, because any
+  other certificate that authority ever signs would otherwise be a worker. The refusal happens
+  during the handshake, before a request line is read.
+- **A grant says what this call may open.** The certificate authenticates the machine and nothing
+  more. What may actually be decrypted is carried by a token minted for one broker's leg of one
+  scan, spent by being used, and covering only the groups it named — so a compromised worker with
+  a valid certificate still cannot ask for anything it was not handed.
+
+The internal port is not in the compose `ports` list, so it is reachable from inside the compose
+network and from nowhere on your host. `pki-init` generates the authority and both certificates
+into `.pki/` on first run; they are gitignored, and a real deployment supplies its own. The edge is
+off unless configured — a deployment that has been given no certificates gets no internal listener
+and no routes behind it, rather than a weakened version of either.
 
 ## What the account permits
 
@@ -1014,6 +1053,7 @@ If you are only running this locally, you can stop reading here. If you are depl
 | Credentials `dbr` / `dbr_dev_password`, committed to the repo | Nothing but the API is reachable from your host, and only you are on it | Real secrets from a secrets manager or environment, never from a committed default |
 | OpenBao unseal key on disk beside the data | Convenience; your disk is already the trust boundary | Auto-unseal via a cloud KMS/HSM, or Shamir shares held by different people. **Never** the keyfile pattern |
 | App authenticates to OpenBao with a token scoped to `openbao/policies/dbr-api.hcl` | Same policy a deployment uses; only the *token id* is well-known | Nothing to change here — but issue the token through an auth method rather than a fixed id, so it rotates |
+| Internal-edge certificates issued by `pki-init` into `.pki/` | A private authority nobody else can reach, generated on your machine | Certificates from an authority you already run, with keys that can be rotated and a revocation list the listener actually checks — see the note below |
 | `tls_disable = true` on the OpenBao listener | Traffic never leaves the compose network | TLS terminated at the listener, or a mutually-authenticated mesh |
 | `docker-compose.dev-ports.yml` publishing Postgres/RabbitMQ/OpenBao | You need psql and the UIs | Never used. Backing services stay off any public interface |
 | Migrations run automatically at startup | One machine, one instance | An explicit pre-deploy step — multiple replicas racing to migrate is exactly what that avoids |
@@ -1021,6 +1061,13 @@ If you are only running this locally, you can stop reading here. If you are depl
 | Token signing key `dbr_dev_token_signing_key_...`, committed to the repo | Nobody else can reach the API to use it | A real secret. Whoever knows this key can mint an access token for any account, so it is the single most important value in this table |
 | Terms version `2026-06-01`, naming no document that exists | Nobody is agreeing to anything on your laptop | The version of terms you actually serve. Every account records this as what its owner accepted, and a version naming nothing makes that record worthless — the one row here that is not a secret and still has to change |
 | Consent policy version `2026-06-01`, naming no document either | Same reason | The version of the consent text you actually serve. Every grant and withdrawal records it, and it is what answers "what was this person shown" long after the wording moved on. A separate document from the terms, so it gets a separate version |
+
+One limitation of the internal edge is worth naming here rather than leaving to be found: **there
+is no revocation.** The listener trusts a named authority and a common name, and a private
+authority issuing three certificates publishes no revocation list — so asking for one would fail
+every handshake. Withdrawing a worker's access therefore means reissuing the authority and
+restarting both processes. That trade is written down beside the check in the code, and it is the
+first thing to change if this runs anywhere real.
 
 One gap is worth naming rather than leaving to be discovered: **completing a signup for an
 address that already has an account answers `409`**, which tells the caller that address is

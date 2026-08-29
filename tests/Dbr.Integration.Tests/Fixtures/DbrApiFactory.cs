@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using System.Globalization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -33,9 +34,22 @@ namespace Dbr.Integration.Tests.Fixtures;
 internal sealed class DbrApiFactory(
     string connectionString,
     string? baoAddress = null,
-    string? baoToken = null)
+    string? baoToken = null,
+    bool internalEdge = false)
     : WebApplicationFactory<Program>
 {
+    /// <summary>
+    /// The port the internal branch answers on, when this factory turns it on.
+    /// </summary>
+    /// <remarks>
+    /// The in-process host binds nothing, so this is not a socket — it is the value a test
+    /// puts on a request's connection to say which listener it should be treated as having
+    /// arrived at, and the number the branch compares against.
+    /// </remarks>
+    public const int InternalPort = 18443;
+
+    public const int PublicPort = 18080;
+
     /// <summary>
     /// Where the browser is pretended to be. The relying party is the bare host of
     /// this, which is what <c>PasskeyOptions</c> requires and what the test
@@ -82,5 +96,23 @@ internal sealed class DbrApiFactory(
         // configuration the real thing rejects.
         builder.UseSetting("Bao:Address", baoAddress ?? "http://127.0.0.1:1");
         builder.UseSetting("Bao:Token", baoToken ?? "not-a-usable-token");
+
+        if (!internalEdge)
+        {
+            // Off unless a test asks for it, which is also what a deployment that has said
+            // nothing gets — so every other test here is exercising the composition root
+            // in the shape most of them run in.
+            return;
+        }
+
+        var certificates = TestCertificateFiles.Write();
+
+        builder.UseSetting("InternalEdge:Enabled", "true");
+        builder.UseSetting("InternalEdge:Port", InternalPort.ToString(CultureInfo.InvariantCulture));
+        builder.UseSetting("InternalEdge:PublicPort", PublicPort.ToString(CultureInfo.InvariantCulture));
+        builder.UseSetting("InternalEdge:ServerCertificatePath", Path.Combine(certificates, "server.crt"));
+        builder.UseSetting("InternalEdge:ServerKeyPath", Path.Combine(certificates, "server.key"));
+        builder.UseSetting("InternalEdge:ClientCertificateAuthorityPath", Path.Combine(certificates, "ca.crt"));
+        builder.UseSetting("InternalEdge:ClientCertificateCommonName", "dbr-worker");
     }
 }
