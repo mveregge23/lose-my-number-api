@@ -48,6 +48,19 @@ public sealed class ProfileService(
     ITenantContext tenantContext)
     : IProfileService
 {
+    /// <summary>
+    /// Everything, for the callers that legitimately want the whole identity.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the enum rather than listed, so a fifth group is released by the
+    /// unscoped read without anybody remembering to add it here. The scoped read has the
+    /// opposite default and that asymmetry is right: forgetting to widen a full read
+    /// shows up as a missing field, forgetting to narrow a scoped one shows up as
+    /// nothing at all.
+    /// </remarks>
+    private static readonly IReadOnlyCollection<IdentityField> AllFields =
+        Enum.GetValues<IdentityField>();
+
     private static readonly JsonSerializerOptions FieldFormat = new()
     {
         // Enum members by name. The numbers shift the day somebody inserts a value in
@@ -122,17 +135,25 @@ public sealed class ProfileService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+    public Task<ProfileIdentityFields?> ReadIdentityAsync(
+        Guid profileId,
+        CancellationToken cancellationToken) =>
+        ReadIdentityAsync(profileId, AllFields, cancellationToken);
+
     public async Task<ProfileIdentityFields?> ReadIdentityAsync(
         Guid profileId,
+        IReadOnlyCollection<IdentityField> fields,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(fields);
+
         var tenantId = RequireTenant();
 
         var identity = await LoadAsync(profileId, cancellationToken).ConfigureAwait(false);
 
         return identity is null
             ? null
-            : await DecryptAsync(identity, tenantId, cancellationToken).ConfigureAwait(false);
+            : await DecryptAsync(identity, tenantId, fields, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<bool> ReplaceIdentityAsync(
@@ -283,9 +304,36 @@ public sealed class ProfileService(
             .FirstOrDefaultAsync(row => row.PrivacyProfileId == profileId, cancellationToken)
             .ConfigureAwait(false);
 
+    private Task<ProfileIdentityFields> DecryptAsync(
+        ProfileIdentity identity,
+        Guid tenantId,
+        CancellationToken cancellationToken) =>
+        DecryptAsync(identity, tenantId, AllFields, cancellationToken);
+
+    /// <summary>
+    /// Decrypts the groups named and leaves the rest as bytes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is what the four separate ciphertexts were for. Storing an identity as one
+    /// blob would have made every read all-or-nothing, so a job that needed a name would
+    /// have had a date of birth in memory whether it wanted one or not. Here a group not
+    /// named is a group whose bytes are never passed to the cipher, so "it only saw a
+    /// name" is a statement about what the process did rather than about what it chose to
+    /// look at.
+    /// </para>
+    /// <para>
+    /// A group left out comes back empty, which is the same shape a profile with none on
+    /// file produces. That collision is deliberate and it is why the caller is handed the
+    /// field list back alongside: from the fields alone there is no way to tell "not
+    /// released" from "none recorded", and nothing downstream should be deciding
+    /// differently between the two — in both cases there was nothing to match on.
+    /// </para>
+    /// </remarks>
     private async Task<ProfileIdentityFields> DecryptAsync(
         ProfileIdentity identity,
         Guid tenantId,
+        IReadOnlyCollection<IdentityField> fields,
         CancellationToken cancellationToken)
     {
         var profileId = identity.PrivacyProfileId;
@@ -295,11 +343,17 @@ public sealed class ProfileService(
             .ConfigureAwait(false);
 
         return new ProfileIdentityFields(
-            Read<List<string>>(key, tenantId, profileId, ProfileField.Names, identity.EncryptedNames),
-            Read<List<ProfileAddress>>(key, tenantId, profileId, ProfileField.Addresses, identity.EncryptedAddresses),
-            Read<List<ProfileContact>>(key, tenantId, profileId, ProfileField.Contacts, identity.EncryptedContacts),
-            identity.EncryptedDob is { } dob
-                ? Read<DateOnly>(key, tenantId, profileId, ProfileField.DateOfBirth, dob)
+            fields.Contains(IdentityField.Names)
+                ? Read<List<string>>(key, tenantId, profileId, IdentityField.Names, identity.EncryptedNames)
+                : [],
+            fields.Contains(IdentityField.Addresses)
+                ? Read<List<ProfileAddress>>(key, tenantId, profileId, IdentityField.Addresses, identity.EncryptedAddresses)
+                : [],
+            fields.Contains(IdentityField.Contacts)
+                ? Read<List<ProfileContact>>(key, tenantId, profileId, IdentityField.Contacts, identity.EncryptedContacts)
+                : [],
+            fields.Contains(IdentityField.DateOfBirth) && identity.EncryptedDob is { } dob
+                ? Read<DateOnly>(key, tenantId, profileId, IdentityField.DateOfBirth, dob)
                 : null);
     }
 
@@ -355,11 +409,11 @@ public sealed class ProfileService(
 
         return new EncryptedIdentity(
             generated.Wrapped,
-            Write(key, tenantId, profileId, ProfileField.Names, fields.Names),
-            Write(key, tenantId, profileId, ProfileField.Addresses, fields.Addresses),
-            Write(key, tenantId, profileId, ProfileField.Contacts, fields.Contacts),
+            Write(key, tenantId, profileId, IdentityField.Names, fields.Names),
+            Write(key, tenantId, profileId, IdentityField.Addresses, fields.Addresses),
+            Write(key, tenantId, profileId, IdentityField.Contacts, fields.Contacts),
             fields.DateOfBirth is { } dob
-                ? Write(key, tenantId, profileId, ProfileField.DateOfBirth, dob)
+                ? Write(key, tenantId, profileId, IdentityField.DateOfBirth, dob)
                 : null);
     }
 
@@ -367,7 +421,7 @@ public sealed class ProfileService(
         DataKey key,
         Guid tenantId,
         Guid profileId,
-        ProfileField field,
+        IdentityField field,
         TValue value) =>
         ProfileCipher.Encrypt(
             key,
@@ -385,7 +439,7 @@ public sealed class ProfileService(
         DataKey key,
         Guid tenantId,
         Guid profileId,
-        ProfileField field,
+        IdentityField field,
         byte[] stored) =>
         JsonSerializer.Deserialize<TValue>(
             ProfileCipher.Decrypt(key, new ProfileFieldBinding(tenantId, profileId, field), stored),

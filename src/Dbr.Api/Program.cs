@@ -25,6 +25,15 @@ builder.Services.AddDbrSignup(builder.Configuration);
 builder.Services.AddDbrConsent(builder.Configuration);
 builder.Services.AddDbrCatalog();
 builder.Services.AddDbrMonitoring();
+
+// Here and not in the worker, which is the whole point of it. This process holds the
+// vault connection and the key-manager token, so it is the one that can turn a grant into
+// plaintext; the process that talks to broker sites holds neither and asks this one. No
+// route exposes it yet — the listener a worker would call is its own story — so what this
+// registration buys today is that minting and redeeming are exercised against the real
+// database rather than against a stand-in.
+builder.Services.AddDbrIdentityReleases(builder.Configuration);
+
 builder.Services.AddDbrBearerAuthentication();
 
 // A field this API does not implement is refused rather than ignored. The default is to

@@ -57,6 +57,33 @@ public interface IProfileService
     Task<ProfileIdentityFields?> ReadIdentityAsync(Guid profileId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Decrypts only the named groups of one profile's identifying fields.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The scoped read the four separate ciphertexts were stored for. A group not named
+    /// here has its bytes left alone rather than decrypted and discarded, so "this job
+    /// only ever saw a name" describes what the process did rather than what it chose to
+    /// look at.
+    /// </para>
+    /// <para>
+    /// A group left out comes back empty, which is indistinguishable from a profile that
+    /// has none on file. That is deliberate: nothing downstream should treat "not
+    /// released" and "none recorded" differently, since in both cases there is nothing to
+    /// match against — and a caller that needs to know which it was has the field list it
+    /// asked with.
+    /// </para>
+    /// </remarks>
+    /// <returns>
+    /// <see langword="null"/> when the profile does not exist or belongs to somebody
+    /// else, exactly as the unscoped read answers.
+    /// </returns>
+    Task<ProfileIdentityFields?> ReadIdentityAsync(
+        Guid profileId,
+        IReadOnlyCollection<IdentityField> fields,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Replaces one profile's identifying fields, re-encrypting all of them.
     /// </summary>
     /// <returns><see langword="false"/> if there is no such profile for this tenant.</returns>
