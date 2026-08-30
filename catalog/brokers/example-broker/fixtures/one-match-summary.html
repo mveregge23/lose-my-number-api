@@ -1,0 +1,46 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+The first half of the two-request scenario: a results page that shows a name and a city and
+withholds the address behind a link.
+
+This shape is the ordinary one on real people-search sites, and it is the reason a fixture
+has to be able to answer more than one request. A recipe that stops here has matched a name
+and a city and nothing else; the address it needs to be confident is on the page behind
+listing-detail.html.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Search results for Alex Whitfield — Example People Finder</title>
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Example People Finder</a>
+  </header>
+
+  <main>
+    <h1 class="results-heading">1 result for &ldquo;Alex Whitfield&rdquo;</h1>
+
+    <ol class="results" data-result-count="1">
+      <li class="result" data-profile-id="ep-8814720">
+        <a class="result-name" href="/profile/ep-8814720">Alex Whitfield</a>
+        <span class="result-age">Age 41</span>
+        <div class="result-location">
+          <span class="result-city">Sacramento</span>,
+          <span class="result-state">CA</span>
+        </div>
+        <p class="result-teaser">
+          Full address history and relatives available on this person&rsquo;s profile.
+        </p>
+      </li>
+    </ol>
+  </main>
+
+  <footer class="site-footer">
+    <a href="/opt-out">Remove my information</a>
+  </footer>
+</body>
+</html>

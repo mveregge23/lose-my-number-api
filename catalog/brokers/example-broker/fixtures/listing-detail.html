@@ -1,0 +1,48 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+The second half of the two-request scenario: the listing page behind the link, where the
+address history actually lives.
+
+Served for any request under /profile, which is how the scenario tells its two pages apart.
+Everything a recipe needs to be confident this is the right person is here rather than on
+the results page, and that is the point of recording it — a fixture set that could only
+answer one request would quietly make every recipe a one-request recipe.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Alex Whitfield, Sacramento CA — Example People Finder</title>
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Example People Finder</a>
+  </header>
+
+  <main class="profile" data-profile-id="ep-8814720">
+    <h1 class="profile-name">Alex Whitfield</h1>
+    <p class="profile-age">Age 41</p>
+
+    <section class="profile-addresses">
+      <h2>Address history</h2>
+      <ul>
+        <li class="profile-address current">12 Rowan Lane, Sacramento, CA 95814</li>
+        <li class="profile-address">318 Wexford Avenue, Davis, CA 95616</li>
+      </ul>
+    </section>
+
+    <section class="profile-relatives">
+      <h2>Possible relatives</h2>
+      <ul>
+        <li class="profile-relative">Marian Whitfield</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a href="/opt-out">Remove my information</a>
+  </footer>
+</body>
+</html>

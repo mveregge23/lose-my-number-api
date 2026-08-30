@@ -1,0 +1,25 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+Throttled, and saying so. Served with 429 and a Retry-After of 120 seconds, which is the
+part that matters — the body is a courtesy and the header is the instruction. A search that
+read only the page would have to guess how long to wait, and every instance guessing
+separately is how a company decides to stop answering altogether.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Too many requests — Example People Finder</title>
+</head>
+<body>
+  <main>
+    <h1>Slow down</h1>
+    <p class="throttle-notice">
+      You have made too many searches in a short time. Please wait a couple of minutes and
+      try again.
+    </p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# The reference fixture set: a people-search site that does not exist.
+#
+# Every other directory under catalog/brokers/ will be a real company, recorded from its
+# real pages. This one is invented on purpose, and it is the only one that ever should be.
+# Two reasons it earns its place:
+#
+#   * It is the worked example. A contributor adding their first real broker has somewhere
+#     to look that shows the shape of a manifest, what a scenario is for, and how a page and
+#     the conclusion drawn from it are written down together.
+#
+#   * It is what makes the engine's own tests honest. Testing a search engine against a real
+#     company's recorded pages ties those tests to that company's markup, so the day the
+#     company redesigns its site the engine's tests fail for a reason that has nothing to do
+#     with the engine. The pages here are stable because nobody serves them.
+#
+# The identity these pages are written around is the one the test suite uses throughout:
+# Alex Whitfield, 12 Rowan Lane, Sacramento CA 95814, alex@example.test, born 1985-04-17.
+
+broker: example-broker
+description: >
+  A fictional people-search site, recorded to exercise every conclusion a search can reach.
+  Not a real company and deliberately not modelled on one.
+
+scenarios:
+  - name: one-match
+    kind: search
+    expect: found
+    description: >
+      A results page holding a single listing that agrees on the name and the city. The base
+      path: what a search is for, and what every other scenario here is a departure from.
+    responses:
+      - body: one-match.html
+
+  - name: several-matches
+    kind: search
+    expect: found
+    description: >
+      Three listings for the same name, of which one shares the address and two do not. What
+      it exercises is above the search rather than in it — a search reports all three and
+      says what each agreed on, and the floor decides which are worth showing anybody.
+    responses:
+      - body: several-matches.html
+
+  - name: listing-behind-a-link
+    kind: search
+    expect: found
+    description: >
+      A results page that shows a name and a city only, with the address on the listing page
+      behind it. The one scenario that answers two different requests, because a recipe that
+      follows a link is the case a single-response fixture cannot describe at all.
+
+      Both responses name their path, unlike every other scenario here. A pathless response
+      answers anything, which is the right description of a company that is rate-limiting or
+      of a site with one page worth recording — but here it would quietly answer requests
+      the recipe was never supposed to make, and a recipe that built the wrong listing URL
+      would be handed the results page again and look like it had worked.
+    responses:
+      - path: /profile
+        body: listing-detail.html
+      - path: /search
+        body: one-match-summary.html
+
+  - name: no-results
+    kind: search
+    expect: nothing-found
+    description: >
+      The company was reached and holds nothing about this person. The outcome everybody
+      involved is hoping for, and the one most easily confused with a failure — which is why
+      it is recorded as its own page rather than left to be inferred from an empty parse.
+    responses:
+      - body: no-results.html
+
+  - name: shape-changed
+    kind: search
+    expect: page-shape-changed
+    description: >
+      A page that is served happily and is no longer the page the recipe was written
+      against — the results are there, and every class name has changed. Retrying cannot
+      help, and the message is for whoever maintains the catalog rather than for the worker.
+    responses:
+      - body: shape-changed.html
+
+  - name: rate-limited
+    kind: search
+    expect: rate-limited
+    description: >
+      The company throttled this instance and said so. Recorded with the Retry-After it
+      sends, because the header is the whole of what distinguishes this from a page that
+      simply failed — and it is what the pacing above the search is supposed to read.
+    responses:
+      - status: 429
+        content-type: text/html; charset=utf-8
+        headers:
+          Retry-After: "120"
+        body: rate-limited.html
+
+  - name: bot-wall
+    kind: search
+    expect: blocked
+    description: >
+      A challenge page in place of results: the company will not serve this instance at all.
+      Separate from a throttle because waiting longer is the answer to one and not to the
+      other, and separate from a changed page because nothing about the catalog entry is
+      wrong.
+    responses:
+      - status: 403
+        body: bot-wall.html
+
+  - name: gateway-error
+    kind: search
+    expect: transient
+    description: >
+      A bad gateway. Nothing about this request in particular, and the one failure here that
+      is worth another attempt.
+    responses:
+      - status: 503
+        headers:
+          Retry-After: "30"
+        body: gateway-error.html
