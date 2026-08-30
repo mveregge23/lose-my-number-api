@@ -116,23 +116,30 @@ public sealed record RedeemReleaseResult(RedeemReleaseOutcome Outcome, RedeemedR
 }
 
 /// <summary>
-/// Minting the permission to see part of an identity, and spending it.
+/// Writing down that one piece of work may see part of one identity.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The two halves run in different places and that is the point of splitting them.
-/// <see cref="MintAsync"/> is called where the tenant is already established and the work
-/// is being planned; <see cref="RedeemAsync"/> is called on behalf of something acting for
-/// nobody, which is why it takes a token and not a scan, a profile or an account.
+/// <b>Minting opens nothing, and that is why it is its own interface.</b> It reads a run,
+/// checks the company is one that run may ask, and writes a row holding a digest — every
+/// one of those is the core store, and none of them is the vault. Only spending a grant
+/// decrypts anything.
 /// </para>
 /// <para>
-/// <b>Neither method takes a tenant.</b> Minting acts for the one the scope was
-/// established for, like every other service here. Redeeming establishes one from the
-/// grant it just resolved — so the identity that comes back is the identity the token was
-/// minted against, and there is no argument that could make it somebody else's.
+/// The two lived on one interface until something needed to plan work without being able
+/// to open it. Sharing forced whoever wanted the harmless half to take a dependency on the
+/// dangerous one — which for the process that fans a scan out across broker lanes would
+/// have meant a vault connection and a key-manager token in the process that also drives
+/// browsers against third-party sites, in order to write a row of random bytes. Splitting
+/// them makes least privilege something the container can express rather than something a
+/// comment asks for.
+/// </para>
+/// <para>
+/// It takes no tenant and acts for the one its scope was established for, like every other
+/// service here.
 /// </para>
 /// </remarks>
-public interface IIdentityReleaseService
+public interface IIdentityReleaseMinter
 {
     /// <summary>
     /// Mints a grant for one broker's leg of one scan.
@@ -147,7 +154,19 @@ public interface IIdentityReleaseService
         Guid brokerId,
         IReadOnlyCollection<IdentityField> fields,
         CancellationToken cancellationToken);
+}
 
+/// <summary>
+/// Turning a grant into plaintext, once.
+/// </summary>
+/// <remarks>
+/// The half that actually decrypts, and therefore the half that only exists in a process
+/// holding the keys. It takes a token and not a scan, a profile or an account, because it
+/// is called on behalf of something acting for nobody — the grant is what establishes who
+/// the answer is about.
+/// </remarks>
+public interface IIdentityReleaseRedeemer
+{
     /// <summary>
     /// Spends a grant and decrypts what it covers.
     /// </summary>
@@ -158,3 +177,13 @@ public interface IIdentityReleaseService
     /// </remarks>
     Task<RedeemReleaseResult> RedeemAsync(string token, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Both halves, for the one process that may do both.
+/// </summary>
+/// <remarks>
+/// The process holding the keys mints as well — it is where a grant is spent, and where
+/// anything asking for one on behalf of a request would ask. Nothing else should resolve
+/// this: a process that can do both has no way to prove it only did one.
+/// </remarks>
+public interface IIdentityReleaseService : IIdentityReleaseMinter, IIdentityReleaseRedeemer;

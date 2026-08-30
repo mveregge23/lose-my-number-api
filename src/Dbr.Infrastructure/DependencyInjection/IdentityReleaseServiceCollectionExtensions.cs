@@ -13,12 +13,13 @@ namespace Dbr.Infrastructure.DependencyInjection;
 /// What a composition root calls to be able to hand out scoped access to an identity.
 /// </summary>
 /// <remarks>
-/// <b>Only a process that already holds the keys should call this.</b> Registering it
-/// requires the vault and the key manager, because redeeming a grant decrypts — so a
-/// worker that called this would be a worker that could decrypt, which is the thing the
-/// grant exists to avoid. That dependency is enforced by what the service needs rather
-/// than by a comment: <c>AddDbrVault</c> is what supplies the profile service behind it,
-/// and a composition root without it fails to build the container.
+/// Two entry points, because the two halves of a release need different privileges.
+/// <see cref="AddDbrReleaseMinting"/> writes down that a piece of work may see part of an
+/// identity and can open nothing; <see cref="AddDbrIdentityReleases"/> adds the half that
+/// decrypts, and only a process already holding the keys should call it. That dependency
+/// is enforced by what the service needs rather than by a comment — <c>AddDbrVault</c> is
+/// what supplies the profile service behind it, and a composition root without it fails to
+/// build the container.
 /// </remarks>
 public static class IdentityReleaseServiceCollectionExtensions
 {
@@ -38,20 +39,60 @@ public static class IdentityReleaseServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
+        services.AddDbrReleaseMinting(configuration);
+
+        services.AddScoped<IdentityReleaseLookup>();
+
+        // Both halves resolve to the one class that can do both. A process holding the keys
+        // mints as well — it is where a grant is spent, and where anything asking for one
+        // on behalf of a request would ask — so there is no honest way for it to claim it
+        // only minted.
+        services.AddScoped<IIdentityReleaseService, IdentityReleaseService>();
+        services.AddScoped<IIdentityReleaseRedeemer>(
+            provider => provider.GetRequiredService<IIdentityReleaseService>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers minting on its own, for a process that plans work and cannot open it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The point of it is what it does not register.</b> Minting reads a run, checks
+    /// that a company is one that run may ask, and writes a row holding a digest —
+    /// core-store work throughout. So the process that fans a scan out across broker lanes
+    /// can plan the work without a vault connection or a key-manager token, which matters
+    /// because that process is also the one driving browsers against sites with no
+    /// interest in being read.
+    /// </para>
+    /// <para>
+    /// Requires <c>AddDbrPersistence</c>, and nothing else.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The grant lifetime cannot work.</exception>
+    public static IServiceCollection AddDbrReleaseMinting(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
         var options = new IdentityReleaseOptions();
         configuration.GetSection(IdentityReleaseOptions.SectionName).Bind(options);
         options.Validate();
 
-        services.AddSingleton(options);
+        // First call wins, so a process that registers both halves reads the section once
+        // and cannot end up with two lifetimes depending on which order it called them in.
+        services.TryAddSingleton(options);
 
-        // Expiry is the whole of what makes a grant short-lived, so this path needs a
-        // clock it can be tested against. Registered only if nothing else has — a host
-        // that brought its own, as the worker does, should keep it rather than have one
-        // call quietly replace what the rest of the process reads the time from.
+        // How long a grant lives is the whole of what makes it short-lived, so this path
+        // needs a clock it can be tested against. Registered only if nothing else has — a
+        // host that brought its own, as the worker does, should keep it rather than have
+        // one call quietly replace what the rest of the process reads the time from.
         services.TryAddSingleton(TimeProvider.System);
 
-        services.AddScoped<IdentityReleaseLookup>();
-        services.AddScoped<IIdentityReleaseService, IdentityReleaseService>();
+        services.TryAddScoped<IIdentityReleaseMinter, IdentityReleaseMinter>();
 
         return services;
     }
