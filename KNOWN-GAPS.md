@@ -163,25 +163,25 @@ existing exposure, so a connector consumes exposures and cannot produce one. Not
 `Exposure.confidence`. A `scan` row therefore reaches `queued` and stays there permanently, and
 finishing the removal pipeline exactly as designed would not change that.
 
-`IBrokerSearch` now says what a search would be asked and what it may answer, and **nothing
-implements it**. There is no engine, no worker calling one, and no registration — so the shape of
-the answer is settled and a scan still reaches `queued` and stops there. The first item below is
-the part that is done.
+Everything around a search now exists and **nothing implements `IBrokerSearch`**. A queued run is
+claimed, fanned out to one leg per company through that company's own lane, given a grant covering
+exactly the groups its search declared, and settled when every leg has answered; what each leg finds
+is scored against one floor and written as an exposure if it clears. The registry those legs resolve
+against is empty, so every leg finishes as `no_search_available` and every run finishes having found
+nothing. **The pipeline is real and it searches nobody.**
 
-**What closing it involves, roughly:** a search contract that is the mirror of `IBrokerConnector` —
-given a broker and a released identity, return candidate listings with a source reference and what
-each one matched on, the score being left to the rule below rather than invented per broker; a
-worker that consumes queued scans and fans out over the same per-broker lanes the
-removal side uses (§10.1); a recipe tier for search so most brokers are reviewed as data rather
-than code (§9.1); a rule for what makes a candidate an exposure and the floor below which nothing
-is shown, which is a product decision with a real cost in both directions; and a scan-scoped vault
-release, since §6.7's release names a `RemovalJob` and a search has no removal to name. It is also
-what would produce `encryptedSourceRef`, so the gap recorded below closes with it.
+**What closing it involves, roughly:** a generic engine that interprets a search recipe — a
+declarative document naming the placeholders it needs and how to read a result page — plus the
+recipes themselves, reviewed as data rather than code at the §9.1 recipe bar. A code tier for the
+handful of companies a document cannot describe, allow-listed and compiled in rather than
+discovered. And a registry that resolves a catalog row to one of them, replacing the empty one:
+that is a registration, because both sides of a leg already resolve through the same interface.
 
-**Worth being blunt about:** this is the product's first half. Everything in the repository today —
-the catalog, consent, jurisdiction resolution, the tenant boundary, the exposure surface, the
-monthly schedule — is real and tested, and none of it finds anything. Do not read a queued scan as
-work in progress; read it as work not yet designed.
+**Worth being blunt about:** this is the product's first half, and what is missing is now the
+narrow part rather than the shape of it. Everything else in the repository — the catalog, consent,
+jurisdiction resolution, the tenant boundary, the exposure surface, the monthly schedule, and now
+the scan pipeline itself — is real and tested, and none of it finds anything, because nothing knows
+how to read a broker's website. Do not read a completed scan with no findings as good news yet.
 
 ---
 
@@ -229,23 +229,6 @@ anticipates a connector answering.
 
 ---
 
-## A scan is recorded but never runs
-
-**Required by:** §6.4 makes `POST /scans` a request to go and ask brokers what they hold, and §10.1
-routes that work to a queue keyed by `brokerId` so every tenant's jobs for one broker share a lane.
-
-**Today:** the request is validated, gated on consent, and written down as a `scan` row in `queued`,
-and nothing picks it up. There is no queue, no connector and no worker, so a scan stays queued
-forever and no `exposure` row is ever written by anything but a test.
-
-**What closing it involves, roughly:** the per-broker consumer lanes and the connector contract,
-which are their own stories. What this one deliberately did not do is invent the message: enqueueing
-onto a transport nobody has chosen would have meant settling the shape of a scan job against an
-imagined consumer, and the shape is the part that is expensive to change once something is reading
-it.
-
----
-
 ## An exposure cannot yet say what it matched
 
 **Required by:** §3 gives `EXPOSURE` an `encryptedSourceRef` — the pointer to the specific broker
@@ -253,8 +236,11 @@ profile page a match was found on — and classes it Restricted-PII, which puts 
 under field-level envelope encryption alongside names and addresses. §1's minimization rule then
 requires purging it once the exposure is `removed` and its verification window has passed.
 
-**Today:** the `exposure` table has no such column, in either store. Nothing writes exposures yet, so
-there has been nothing to point at.
+**Today:** the `exposure` table has no such column, in either store — and scans now write exposures,
+so this has stopped being theoretical. A search hands back the listing it found; the leg scores the
+candidate, writes the finding, and **drops the pointer on the floor**. Two findings on one company
+are therefore told apart by their confidence and by nothing else, and there is no way to go back and
+look at what was found.
 
 **What closing it involves, roughly:** a vault-side table keyed by exposure id, in the same shape as
 `vault.profile_identity`, plus a release path for whatever needs to read it and the purge that

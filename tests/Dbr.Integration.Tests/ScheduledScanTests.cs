@@ -141,19 +141,24 @@ public class ScheduledScanTests(PostgresFixture postgres, OpenBaoFixture openBao
 
     [Theory]
     [InlineData("privacy_profile")]
-    [InlineData("scan")]
     [InlineData("exposure")]
     [InlineData("consent_record")]
+    [InlineData("scan_leg")]
+    [InlineData("identity_release")]
     public async Task The_scheduler_role_cannot_reach_any_other_table(string table)
     {
         // Refused by the grant, before row-level security is consulted at all — the role
         // holds no privilege on these tables, so there is nothing for a policy to filter.
         // Two independent layers therefore say no, and this is the outer one.
         //
-        // What the policy choice buys is that the relaxation stayed put: the exemption
-        // written for this role names the tenant table, so a table added tomorrow is not
-        // silently included. BYPASSRLS would have been an attribute of the role instead,
-        // exempting it from every policy everywhere in order to relax exactly one.
+        // What the policy choice buys is that the relaxation stayed put: the exemptions
+        // written for this role name the two tables they were written for, so a table added
+        // tomorrow is not silently included. BYPASSRLS would have been an attribute of the
+        // role instead, exempting it from every policy everywhere in order to relax two.
+        //
+        // The scan table is not in this list any more, and that is the point of the list:
+        // it was added deliberately, in a migration that says why, and the tests covering
+        // exactly how far that reaches live with the dispatcher that needed it.
         await OpenAccountAsync();
 
         var refused = await Assert.ThrowsAsync<PostgresException>(() =>

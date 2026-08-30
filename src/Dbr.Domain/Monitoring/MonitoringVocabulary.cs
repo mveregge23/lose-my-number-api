@@ -58,6 +58,43 @@ public static class MonitoringVocabulary
         _ => null,
     };
 
+    public static string ToWire(ScanLegOutcome outcome) => outcome switch
+    {
+        ScanLegOutcome.Found => "found",
+        ScanLegOutcome.NothingFound => "nothing_found",
+        ScanLegOutcome.NoSearchAvailable => "no_search_available",
+        ScanLegOutcome.ReleaseRefused => "release_refused",
+        ScanLegOutcome.ContractBroken => "contract_broken",
+        ScanLegOutcome.Transient => "transient",
+        ScanLegOutcome.RateLimited => "rate_limited",
+        ScanLegOutcome.PageShapeChanged => "page_shape_changed",
+        ScanLegOutcome.Blocked => "blocked",
+        ScanLegOutcome.Unsupported => "unsupported",
+        ScanLegOutcome.Faulted => "faulted",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(outcome),
+            outcome,
+            "Unmapped scan leg outcome. Adding one means a migration widening the check "
+            + "constraint on scan_leg.outcome as well — and deciding whether it counts as "
+            + "the company having been reached."),
+    };
+
+    public static ScanLegOutcome? ParseScanLegOutcome(string? value) => value switch
+    {
+        "found" => ScanLegOutcome.Found,
+        "nothing_found" => ScanLegOutcome.NothingFound,
+        "no_search_available" => ScanLegOutcome.NoSearchAvailable,
+        "release_refused" => ScanLegOutcome.ReleaseRefused,
+        "contract_broken" => ScanLegOutcome.ContractBroken,
+        "transient" => ScanLegOutcome.Transient,
+        "rate_limited" => ScanLegOutcome.RateLimited,
+        "page_shape_changed" => ScanLegOutcome.PageShapeChanged,
+        "blocked" => ScanLegOutcome.Blocked,
+        "unsupported" => ScanLegOutcome.Unsupported,
+        "faulted" => ScanLegOutcome.Faulted,
+        _ => null,
+    };
+
     public static string ToWire(ExposureStatus status) => status switch
     {
         ExposureStatus.New => "new",

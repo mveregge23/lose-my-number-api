@@ -180,6 +180,31 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Every value in the first column, for the questions a scalar cannot answer.
+    /// </summary>
+    /// <remarks>
+    /// A row count tells you how many legs a run planned; it does not tell you which
+    /// companies they were for, and a test that only counted would pass on a dispatcher
+    /// that planned the right number of the wrong ones.
+    /// </remarks>
+    public async Task<IReadOnlyList<T>> QueryManyAsOwnerAsync<T>(string sql)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync();
+
+        var values = new List<T>();
+
+        while (await reader.ReadAsync())
+        {
+            values.Add(reader.GetFieldValue<T>(0));
+        }
+
+        return values;
+    }
+
+    /// <summary>
     /// Creates a tenant-scoped table and opts it into the boundary the way a real
     /// table's migration does — through <c>app.enable_tenant_rls</c>, not by
     /// hand-writing a policy the production procedure might no longer match.

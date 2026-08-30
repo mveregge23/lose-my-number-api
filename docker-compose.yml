@@ -275,6 +275,17 @@ services:
       # month cannot be switched off by accident.
       ScanSchedule__DailyAtHourUtc: ${SCAN_SCHEDULE_HOUR_UTC:-2}
       ScanSchedule__Enabled: ${SCAN_SCHEDULE_ENABLED:-true}
+      # Planning a run is not the same job as starting one. The schedule above decides who
+      # is due; this decides how promptly a run somebody asked for — by hand or on the
+      # schedule — is turned into work sitting in each company's lane.
+      #
+      # The batch is a batch rather than a drain on purpose. Every leg is dispatched
+      # carrying a grant that starts expiring immediately, while the lane it waits in still
+      # only moves at the pace that company allows — so one wake-up after an outage that
+      # planned every waiting run would mostly mint grants that expire before their turn.
+      ScanDispatch__Enabled: ${SCAN_DISPATCH_ENABLED:-true}
+      ScanDispatch__PollSeconds: ${SCAN_DISPATCH_POLL_SECONDS:-15}
+      ScanDispatch__BatchSize: ${SCAN_DISPATCH_BATCH_SIZE:-20}
       # No key-manager credentials and no vault connection string, deliberately. Workers
       # talk to third-party broker sites, and either of those is a standing decryption
       # right — exactly what a compromised worker should not be able to hand over. When a

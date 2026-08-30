@@ -26,6 +26,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Asking for a scan](#asking-for-a-scan)
 - [What the scans found](#what-the-scans-found)
 - [Monthly scans, and the day yours falls on](#monthly-scans-and-the-day-yours-falls-on)
+- [Running a scan](#running-a-scan)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
@@ -589,9 +590,11 @@ Two responses worth knowing about before you build against it:
   on every request rather than once at signup, so withdrawing permission stops the next scan.
 - **`202 Accepted`**, not `201`. The run has been taken on and has not happened.
 
-And the part to be aware of if you are running this today: **a queued scan stays queued.** The
-per-broker worker lanes that would pick one up are a later story, so `POST /scans` records the
-request and nothing executes it yet. `KNOWN-GAPS.md` has the detail.
+And the part to be aware of if you are running this today: **a scan runs, and finds nothing.** The
+worker picks up queued runs, asks each company in scope through that company's own lane, and settles
+the run when every one has answered — but nothing in this build knows how to read a broker's
+website, so every leg finishes as "no search available". A completed scan with no findings is not
+yet good news. [Running a scan](#running-a-scan) has the detail, and so does `KNOWN-GAPS.md`.
 
 ## What the scans found
 
@@ -663,6 +666,48 @@ The planner needs to know which accounts exist, which no tenant-scoped role can 
 `dbr_scheduler` for exactly that one query — one column of one table, no writes — and then does
 everything with a consequence as `dbr_app`, one account at a time, inside the same boundary as
 every other write in this system.
+
+## Running a scan
+
+Asking for a scan records it; something else has to start it. That something is the worker, which
+wakes on an interval, finds the runs nobody has picked up, and turns each into one piece of work per
+company — queued in that company's own lane, at the pace its catalog row allows.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `ScanDispatch__Enabled` | `true` | Whether this worker starts queued scans at all |
+| `ScanDispatch__PollSeconds` | `15` | How long between passes |
+| `ScanDispatch__BatchSize` | `20` | How many runs one pass takes on |
+
+The batch is a batch rather than a drain, deliberately. Each leg is dispatched carrying a grant that
+starts expiring immediately, while the lane it waits in still only moves at the pace that company
+allows — so a single wake-up after an outage that minted a grant for every leg of every waiting run
+would mostly mint grants that expire before their turn comes.
+
+**A leg needs the internal edge.** Searching means holding part of somebody's identity, and the
+worker holds no keys — it presents its grant to the API over mutual TLS and gets back only the
+groups that grant covered (see [How a worker gets part of an identity](#how-a-worker-gets-part-of-an-identity)).
+If `InternalApi__Enabled` is not set, the worker declares no scan lane at all: the work stays in the
+queue until a worker that *can* reach the edge drains it, which is better than taking it out and
+recording every company as unreachable.
+
+Three things worth knowing if you run this:
+
+- **Nothing knows how to search a broker yet.** Every leg resolves against an empty registry and
+  finishes as `no_search_available`, so runs complete having found nothing. This is the one piece
+  still missing, and it is a registration rather than a redesign — `KNOWN-GAPS.md` says what it
+  takes.
+- **A run is `completed` only if every company in scope was reached.** One company that rate-limited
+  us makes the run `failed`, because "completed" is meant to answer "did we actually look
+  everywhere". Which company and why is on the leg rows.
+- **A finding below the confidence floor is not written down.** A listing that shares only a name is
+  counted and dropped, not stored and hidden — the count is on the leg, and it is what tells you a
+  bar is set wrong.
+
+Finding runs nobody has started reaches past the tenant boundary in the same way listing accounts
+does, and uses the same role. `dbr_scheduler` can read four columns of `scan`, and only the rows
+still waiting: a run that has been claimed is invisible to it, so it cannot be used to watch what an
+account is doing. Everything that follows happens as `dbr_app`, for one account at a time.
 
 ## Signing in: passkeys
 
