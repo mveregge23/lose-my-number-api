@@ -4,6 +4,7 @@
 using Dbr.Domain.Monitoring;
 using Dbr.Domain.Search;
 using Dbr.Infrastructure.Monitoring;
+using Dbr.Search;
 
 namespace Dbr.Infrastructure.Tests.Monitoring;
 
@@ -155,11 +156,20 @@ public class ScanLegTests
         Assert.True(options.Enabled);
     }
 
-    /// <summary>Nothing in this build knows how to search anybody yet, and says so.</summary>
+    /// <summary>
+    /// A build carrying no recipes knows how to search nobody, and says so.
+    /// </summary>
+    /// <remarks>
+    /// The ordinary state of a deployment whose catalog has companies nobody has written a
+    /// recipe for, which is most of them. It answers nothing rather than failing, so every
+    /// leg records that its company was not searchable and the run still finishes.
+    /// </remarks>
     [Fact]
     public void A_build_with_no_searches_answers_that_it_has_none()
     {
-        IBrokerSearchRegistry registry = new Infrastructure.Search.EmptyBrokerSearchRegistry();
+        IBrokerSearchRegistry registry = new RecipeSearchRegistry(
+            [],
+            _ => throw new InvalidOperationException("Nothing to build an engine for."));
 
         Assert.Null(registry.Find(Guid.NewGuid()));
     }

@@ -6,6 +6,7 @@
     <Project Path="src/Dbr.Domain/Dbr.Domain.csproj" />
     <Project Path="src/Dbr.Infrastructure/Dbr.Infrastructure.csproj" />
     <Project Path="src/Dbr.Migrator/Dbr.Migrator.csproj" />
+    <Project Path="src/Dbr.Search/Dbr.Search.csproj" />
     <Project Path="src/Dbr.Worker/Dbr.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -15,5 +16,6 @@
     <Project Path="tests/Dbr.Infrastructure.Tests/Dbr.Infrastructure.Tests.csproj" />
     <Project Path="tests/Dbr.Integration.Tests/Dbr.Integration.Tests.csproj" />
     <Project Path="tests/Dbr.Migrator.Tests/Dbr.Migrator.Tests.csproj" />
+    <Project Path="tests/Dbr.Search.Tests/Dbr.Search.Tests.csproj" />
   </Folder>
 </Solution>

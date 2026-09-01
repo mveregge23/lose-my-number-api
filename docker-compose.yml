@@ -286,6 +286,14 @@ services:
       ScanDispatch__Enabled: ${SCAN_DISPATCH_ENABLED:-true}
       ScanDispatch__PollSeconds: ${SCAN_DISPATCH_POLL_SECONDS:-15}
       ScanDispatch__BatchSize: ${SCAN_DISPATCH_BATCH_SIZE:-20}
+      # How this instance introduces itself to a company whose site it reads. Change it if
+      # you self-host: the link should point at whoever is running this copy, because it is
+      # the only way an operator seeing the traffic can find out what it is and ask about it.
+      #
+      # The timeout is short because a leg holds a decryption grant while it runs, so a
+      # company that has stopped answering should fail quickly rather than keep one open.
+      Search__UserAgent: ${SEARCH_USER_AGENT:-LoseMyNumber/1.0 (+https://github.com/mveregge23/lose-my-number-api)}
+      Search__TimeoutSeconds: ${SEARCH_TIMEOUT_SECONDS:-20}
       # No key-manager credentials and no vault connection string, deliberately. Workers
       # talk to third-party broker sites, and either of those is a standing decryption
       # right — exactly what a compromised worker should not be able to hand over. When a

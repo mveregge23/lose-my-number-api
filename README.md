@@ -1087,6 +1087,60 @@ The same fixtures are what CI dry-runs a recipe against, which is the point of t
 `catalog/` beside the recipe rather than under `tests/`: one fixture, two consumers, reached
 through the same reader so they cannot drift.
 
+### Search recipes
+
+How to search a company is a document, not a class. `catalog/brokers/{brokerId}/search.yaml` sits
+beside that company's recorded pages, and one engine interprets all of them:
+
+```yaml
+brokerId: 2f6b1c48-9d3a-4e57-b8a1-0c5e7f9d24b3
+description: >
+  Searches by full name and city, and reads name and address off each result block.
+query: "/search?name={{names.full}}&city={{addresses.first.city}}"
+item: ".result"
+link: ".result-name"
+noResults: ".no-results"
+blocked: ".challenge-widget"
+fields:
+  names: ".result-name"
+  addresses: ".result-addresses"
+```
+
+Two things are deliberately absent, and they are what make a recipe reviewable at a lighter bar
+than code:
+
+- **There is nowhere to put a host.** `query` is a path; where the request goes is built from the
+  company's catalog row. A document that could name an address would be one that could send
+  somebody's name anywhere on the internet, arriving for review as "this YAML now points at a
+  different URL".
+- **There is nowhere to say which parts of an identity it needs.** They are derived — the
+  placeholders the query writes, plus the groups the results are compared against — so the
+  declaration cannot disagree with what the recipe uses. The recipe above, structurally, cannot
+  cause a date of birth to be decrypted, because nothing in it mentions one.
+
+`{{...}}` is a closed vocabulary (`names.full`, `names.first`, `names.last`,
+`addresses.first.line1|city|region|postalCode`, `contacts.email`, `contacts.phone`,
+`dateOfBirth.year`) and anything else is refused when the recipe is read. Values are escaped where
+they are written, so a name containing an ampersand cannot end a query parameter early.
+
+`noResults` is the most load-bearing line in the file. Without it, a page whose result blocks have
+been renamed and a page that lists nobody are the same absence — and reporting the first as the
+second tells somebody they are not listed anywhere on the strength of a changed class name.
+
+**Every recipe is run against every page recorded for its company, on every pull request**
+(`Dbr.Search.Tests`). The fixture declares what a page means and the recipe has to reach that
+conclusion, so neither half can be quietly adjusted to agree with the other. That check is what
+"reviewed as data" actually rests on.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `Search__UserAgent` | `LoseMyNumber/1.0 (+https://github.com/…)` | How this instance introduces itself |
+| `Search__TimeoutSeconds` | `20` | How long one request is given |
+
+Change `Search__UserAgent` if you self-host: it should point at you, not at this repository. A leg
+holds a decryption grant while it runs, which is why the timeout is short — a company that has
+stopped answering should fail quickly rather than hold a grant open and pin a lane.
+
 To run the API against the containerized infrastructure, start the backing services only:
 
 ```bash

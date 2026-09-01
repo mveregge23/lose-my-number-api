@@ -109,6 +109,18 @@ scenarios:
       - status: 403
         body: bot-wall.html
 
+  - name: soft-bot-wall
+    kind: search
+    expect: blocked
+    description: >
+      The same refusal served with 200, which is how most challenge pages actually arrive. To
+      HTTP it is a perfectly good page, so nothing above the body can tell it from a results
+      page — and it carries a results-shaped container with nothing in it, the way a site's
+      ordinary shell does when its content has been swapped out. Only a selector naming the
+      challenge separates this from a recipe whose selectors have gone stale.
+    responses:
+      - body: soft-bot-wall.html
+
   - name: gateway-error
     kind: search
     expect: transient

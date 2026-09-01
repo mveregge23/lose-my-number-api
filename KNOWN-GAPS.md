@@ -150,38 +150,38 @@ connectors. It blocks anything running against a real one.
 
 ---
 
-## Nothing searches a broker, and nothing was going to
+## No real company has a search recipe
 
 **Required by:** §6.4 makes a scan the act of asking a set of brokers what they hold about one
-identity, and §2 draws a scan worker as its own box alongside the removal worker. `Exposure` exists
-to hold what it finds, down to a `confidence` score for how sure the match is.
+identity, and §9.1 expects most of them to be described by a recipe reviewed as data rather than by
+a hand-written class.
 
-**Today:** no code searches anything, and — until this entry was written — no plan did either. The
-design specifies the removal half in detail and never specifies the search half. §9's connector
-contract is not it: `ConnectorContext` carries a `RemovalRequestId` and a `SourceRef` read off an
-existing exposure, so a connector consumes exposures and cannot produce one. Nothing computes
-`Exposure.confidence`. A `scan` row therefore reaches `queued` and stays there permanently, and
-finishing the removal pipeline exactly as designed would not change that.
+**Today:** the search half is built and works. A queued run is claimed, fanned out to one leg per
+company through that company's own lane, given a grant covering exactly the groups its recipe
+mentions, and settled when every leg has answered; each finding is scored against one floor and
+written as an exposure if it clears. A recipe engine reads a results page and reports what each
+listing agreed with, and the whole of it is exercised on every pull request against recorded pages.
 
-Everything around a search now exists and **nothing implements `IBrokerSearch`**. A queued run is
-claimed, fanned out to one leg per company through that company's own lane, given a grant covering
-exactly the groups its search declared, and settled when every leg has answered; what each leg finds
-is scored against one floor and written as an exposure if it clears. The registry those legs resolve
-against is empty, so every leg finishes as `no_search_available` and every run finishes having found
-nothing. **The pipeline is real and it searches nobody.**
+**All of that runs against one company, and that company is invented.** `example-broker` exists to
+prove the machinery and to be the worked example; it serves no real listings because it serves
+nothing at all. No real company has a recipe, for the plainer reason recorded below: no real company
+is in the catalog. A scan of a live instance today reaches every entry it has and finishes
+`no_search_available` on all of them.
 
-**What closing it involves, roughly:** a generic engine that interprets a search recipe — a
-declarative document naming the placeholders it needs and how to read a result page — plus the
-recipes themselves, reviewed as data rather than code at the §9.1 recipe bar. A code tier for the
-handful of companies a document cannot describe, allow-listed and compiled in rather than
-discovered. And a registry that resolves a catalog row to one of them, replacing the empty one:
-that is a registration, because both sides of a leg already resolve through the same interface.
+**What closing it involves, roughly:** the catalog content — see the entry below — and a recipe
+beside each company's recorded pages. That is research and reviewing rather than engineering: read
+a site, write down the query it takes and the selectors its results use, record the pages that prove
+it, open a pull request. The dry-run in `Dbr.Search.Tests` checks the result, so a recipe arrives
+with something that fails when it is wrong.
 
-**Worth being blunt about:** this is the product's first half, and what is missing is now the
-narrow part rather than the shape of it. Everything else in the repository — the catalog, consent,
-jurisdiction resolution, the tenant boundary, the exposure surface, the monthly schedule, and now
-the scan pipeline itself — is real and tested, and none of it finds anything, because nothing knows
-how to read a broker's website. Do not read a completed scan with no findings as good news yet.
+**Also missing: the code tier.** §9.1 allows a hand-written class for the handful of companies a
+document cannot describe, allow-listed and compiled into the worker. Nothing implements one and
+nothing needs to yet — `SearchKind.Code` exists in the contract so that the distinction is legible
+at dispatch when it does.
+
+**Worth being blunt about:** the scan pipeline is real, tested end to end, and finds nothing on a
+real deployment. Do not read a completed scan with no findings as good news until this entry and the
+one below it are gone.
 
 ---
 

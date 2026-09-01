@@ -77,6 +77,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
   <ItemGroup>
     <ProjectReference Include="..\Dbr.Domain\Dbr.Domain.csproj" />
+
+    <!-- One direction only, and worth keeping that way. The engine that parses a company's
+         HTML holds no database, no transport and no vault; this composes it with the ones
+         that do. If that reference ever needs to run the other way, the thing reading
+         hostile markup has grown a reach it should not have. -->
+    <ProjectReference Include="..\Dbr.Search\Dbr.Search.csproj" />
   </ItemGroup>
 
   <ItemGroup>

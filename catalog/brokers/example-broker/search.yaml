@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# How to ask the reference company what it holds. The worked example, beside the recorded
+# pages it is dry-run against.
+#
+# Every line here is data. There is nothing in this document to execute, which is the whole
+# reason a recipe is reviewed at a lighter bar than a class in the worker (§9.1): the worst
+# a bad one can do is fail this one company's searches. Two things in particular are absent
+# on purpose, and a reviewer should know why:
+#
+#   * There is nowhere to put a host. The query below is a path; where the request actually
+#     goes comes from the company's catalog row. A document that could name an address would
+#     be one that could send somebody's name anywhere on the internet, reviewed as "this YAML
+#     now points at a different URL".
+#
+#   * There is nowhere to say which parts of an identity this needs. They are worked out from
+#     the document — the placeholders the query writes, plus the groups the results are
+#     compared against — so the declaration cannot disagree with what the recipe uses. This
+#     recipe, structurally, cannot cause a date of birth to be decrypted, because nothing in
+#     it mentions one.
+
+brokerId: 2f6b1c48-9d3a-4e57-b8a1-0c5e7f9d24b3
+description: >
+  The reference people-search site. Searches by full name and city, and reads name and
+  address off each result block.
+
+# A path and a query string. Values are escaped where they are written, so the punctuation
+# here is the recipe's own and a name containing an ampersand cannot end a parameter early.
+query: "/search?name={{names.full}}&city={{addresses.first.city}}"
+
+# One result block on the results page.
+item: ".result"
+
+# Where the listing's own page is. The href becomes the source reference, and a result whose
+# link cannot be read is dropped rather than reported: a finding nobody can go and look at is
+# one nobody can check or act on.
+link: ".result-name"
+
+# Present only when the company genuinely holds nobody. The most load-bearing line in this
+# file. Without it, a page whose result blocks have been renamed and a page that lists nobody
+# are the same absence — and reporting the first as the second tells somebody they are not
+# listed anywhere on the strength of a changed class name.
+noResults: ".no-results"
+
+# A challenge served with 200, which no status code could distinguish from a page holding
+# nothing. Optional, and worth having wherever a company uses one.
+blocked: ".challenge-widget"
+
+# What each result block is compared against. Read as text and reported as a degree of
+# agreement — never as content, because the text on a company's profile page is that
+# company's copy of somebody's identity and carrying it back would make this a second store
+# of it.
+#
+# A date of birth is deliberately not here and is refused if added: pages show an age rather
+# than a date, and what an age agrees with is a judgement nothing in this system has made.
+fields:
+  names: ".result-name"
+  addresses: ".result-addresses"
