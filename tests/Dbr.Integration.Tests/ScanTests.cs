@@ -83,6 +83,7 @@ public class ScanTests(PostgresFixture postgres, OpenBaoFixture openBao) : IAsyn
         // account on purpose.
         await postgres.ExecuteAsOwnerAsync(
             $"""
+             DELETE FROM vault.exposure_source;
              DELETE FROM public.exposure;
              DELETE FROM public.scan_broker;
              DELETE FROM public.scan;

@@ -22,7 +22,15 @@ public sealed record StoredIdentityRelease(
     Guid PrivacyProfileId,
     IReadOnlyList<IdentityField> Fields,
     DateTimeOffset ExpiresAt,
-    DateTimeOffset? RedeemedAt);
+    DateTimeOffset? RedeemedAt,
+
+    /// <summary>When this leg's findings were recorded, or null while they have not been.</summary>
+    /// <remarks>
+    /// The grant's second single-use spend, separate from the first: opening the identity
+    /// does not consume the right to say what was found with it, and reporting does not
+    /// require having opened it.
+    /// </remarks>
+    DateTimeOffset? ReportedAt);
 
 /// <summary>
 /// Resolves a release token to the grant it opens, before the caller is acting for any
@@ -49,7 +57,7 @@ public sealed class IdentityReleaseLookup(DbrDbContext context)
     public Task<StoredIdentityRelease?> FindAsync(byte[] tokenHash, CancellationToken cancellationToken) =>
         context.ExecuteCommandAsync(
             "SELECT id, tenant_id, scan_id, broker_id, privacy_profile_id, fields, "
-            + "expires_at, redeemed_at FROM app.find_identity_release(@token_hash)",
+            + "expires_at, redeemed_at, reported_at FROM app.find_identity_release(@token_hash)",
             async (command, token) =>
             {
                 command.WithParameter("token_hash", tokenHash);
@@ -71,7 +79,10 @@ public sealed class IdentityReleaseLookup(DbrDbContext context)
                     reader.GetFieldValue<DateTimeOffset>(6),
                     await reader.IsDBNullAsync(7, token).ConfigureAwait(false)
                         ? null
-                        : reader.GetFieldValue<DateTimeOffset>(7));
+                        : reader.GetFieldValue<DateTimeOffset>(7),
+                    await reader.IsDBNullAsync(8, token).ConfigureAwait(false)
+                        ? null
+                        : reader.GetFieldValue<DateTimeOffset>(8));
             },
             cancellationToken);
 

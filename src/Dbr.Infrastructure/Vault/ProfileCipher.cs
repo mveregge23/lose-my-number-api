@@ -58,68 +58,28 @@ public sealed record ProfileFieldBinding(Guid TenantId, Guid PrivacyProfileId, I
 public static class ProfileCipher
 {
     /// <summary>The only format written today.</summary>
-    public const byte Version = 1;
-
-    private const int NonceSize = 12;
-
-    private const int TagSize = 16;
+    /// <remarks>
+    /// Kept here as well as on the shared envelope, because a test pins the exact bytes this
+    /// produces and the number those bytes start with is part of what it pins.
+    /// </remarks>
+    public const byte Version = FieldCipher.Version;
 
     public static byte[] Encrypt(DataKey key, ProfileFieldBinding binding, ReadOnlySpan<byte> plaintext)
     {
-        ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(binding);
 
-        var output = new byte[1 + NonceSize + plaintext.Length + TagSize];
-        output[0] = Version;
-
-        var nonce = output.AsSpan(1, NonceSize);
-        RandomNumberGenerator.Fill(nonce);
-
-        using var aes = new AesGcm(key.Material, TagSize);
-        aes.Encrypt(
-            nonce,
-            plaintext,
-            output.AsSpan(1 + NonceSize, plaintext.Length),
-            output.AsSpan(1 + NonceSize + plaintext.Length, TagSize),
-            AssociatedData(binding));
-
-        return output;
+        return FieldCipher.Encrypt(key, AssociatedData(binding), plaintext);
     }
 
     /// <exception cref="CryptographicException">
-    /// The ciphertext was altered, was encrypted under a different key, or was written
-    /// for a different tenant, profile or field.
+    /// The ciphertext was altered, was encrypted under a different key, or was written for a
+    /// different tenant, profile or field.
     /// </exception>
     public static byte[] Decrypt(DataKey key, ProfileFieldBinding binding, ReadOnlySpan<byte> ciphertext)
     {
-        ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(binding);
 
-        if (ciphertext.Length < 1 + NonceSize + TagSize)
-        {
-            throw new CryptographicException(
-                "Stored value is too short to be a ciphertext this cipher produced.");
-        }
-
-        if (ciphertext[0] != Version)
-        {
-            throw new CryptographicException(
-                $"Stored value carries format version {ciphertext[0]}, which this build cannot "
-                + "read. A field written by a newer version is not something to guess at.");
-        }
-
-        var payloadLength = ciphertext.Length - 1 - NonceSize - TagSize;
-        var plaintext = new byte[payloadLength];
-
-        using var aes = new AesGcm(key.Material, TagSize);
-        aes.Decrypt(
-            ciphertext.Slice(1, NonceSize),
-            ciphertext.Slice(1 + NonceSize, payloadLength),
-            ciphertext.Slice(1 + NonceSize + payloadLength, TagSize),
-            plaintext,
-            AssociatedData(binding));
-
-        return plaintext;
+        return FieldCipher.Decrypt(key, AssociatedData(binding), ciphertext);
     }
 
     /// <summary>

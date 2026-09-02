@@ -7,6 +7,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using Dbr.Api.InternalEdge;
+using Dbr.Domain.Monitoring;
 using Dbr.Domain.Profiles;
 using Dbr.Domain.Vault;
 using Dbr.Infrastructure.InternalEdge;
@@ -78,6 +79,7 @@ public class InternalEdgeListenerTests : IAsyncLifetime
         });
 
         builder.Services.AddSingleton<IIdentityReleaseService>(new StubReleases());
+        builder.Services.AddSingleton<IFindingReporter>(new StubReporter());
 
         builder.AddDbrInternalEdge();
 
@@ -304,5 +306,25 @@ public class InternalEdgeListenerTests : IAsyncLifetime
                     [IdentityField.Names],
                     new ProfileIdentityFields(["Alex Whitfield"], [], [], null)))
                 : RedeemReleaseResult.Refused());
+    }
+
+    /// <summary>
+    /// The other route on this listener, stood up so the branch has both to map.
+    /// </summary>
+    /// <remarks>
+    /// These tests are about the listener — which routes it answers, which it has never heard
+    /// of — so what the routes do behind them is somebody else's test. It has to be registered
+    /// all the same: a route whose handler cannot be built fails the whole pipeline, and the
+    /// symptom is every one of these returning 500 rather than the route being missing.
+    /// </remarks>
+    private sealed class StubReporter : IFindingReporter
+    {
+        public Task<ReportFindingsResult> ReportAsync(
+            string token,
+            IReadOnlyList<ReportedListing> listings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(token == GoodToken
+                ? new ReportFindingsResult(ReportFindingsOutcome.Recorded, listings.Count, 0)
+                : ReportFindingsResult.Refused());
     }
 }

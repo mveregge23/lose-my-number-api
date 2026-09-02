@@ -109,6 +109,7 @@ public class ScanLegExecutionTests(PostgresFixture postgres, OpenBaoFixture open
 
         await postgres.ExecuteAsOwnerAsync(
             $"""
+             DELETE FROM vault.exposure_source;
              DELETE FROM public.exposure;
              DELETE FROM public.scan_leg;
              DELETE FROM public.identity_release;
@@ -596,7 +597,7 @@ public class ScanLegExecutionTests(PostgresFixture postgres, OpenBaoFixture open
 
         services.AddSingleton<IBrokerSearchRegistry>(_searches);
         services.AddSingleton<IBrokerWorkDispatcher>(_lanes);
-        services.AddSingleton<IReleaseClient>(new DirectReleaseClient(RedeemAsync));
+        services.AddSingleton<IReleaseClient>(new DirectReleaseClient(RedeemAsync, ReportAsync));
 
         services.AddScoped<ScanCompletion>();
         services.AddScoped<IScanDispatcher, ScanDispatcher>();
@@ -616,6 +617,44 @@ public class ScanLegExecutionTests(PostgresFixture postgres, OpenBaoFixture open
     /// grant is spent against the real service, so a group the token did not cover is
     /// absent because it was never decrypted.
     /// </remarks>
+    /// <summary>
+    /// The other half of the edge: recording what the leg found, really.
+    /// </summary>
+    /// <remarks>
+    /// Against the API's own container, so the exposure row and the encrypted listing address
+    /// beside it are written by the real reporter, under a real data key from a real key
+    /// manager. What the socket would add is covered by the internal-edge tests; what these
+    /// are about is that a finding reaches both stores and that the grant is spent once.
+    /// </remarks>
+    private async Task<ReportFindingsResponse?> ReportAsync(
+        string token,
+        IReadOnlyList<ReportedListingPayload> listings,
+        CancellationToken cancellationToken)
+    {
+        using var scope = _factory.Services.CreateScope();
+
+        var reported = new List<ReportedListing>();
+
+        foreach (var listing in listings)
+        {
+            reported.Add(new ReportedListing(
+                new Uri(listing.SourceRef, UriKind.Absolute),
+                [
+                    .. listing.Matches.Select(match => new FieldMatch(
+                        IdentityVocabulary.Parse(match.Field)!.Value,
+                        Enum.Parse<MatchStrength>(match.Strength, ignoreCase: true))),
+                ]));
+        }
+
+        var result = await scope.ServiceProvider
+            .GetRequiredService<IFindingReporter>()
+            .ReportAsync(token, reported, cancellationToken);
+
+        return result.Outcome is ReportFindingsOutcome.Recorded
+            ? new ReportFindingsResponse(result.Recorded, result.BelowFloor)
+            : null;
+    }
+
     private async Task<ReleaseResponse?> RedeemAsync(string token, CancellationToken cancellationToken)
     {
         using var scope = _factory.Services.CreateScope();

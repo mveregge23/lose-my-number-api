@@ -75,6 +75,7 @@ public class ExposureTests(PostgresFixture postgres, OpenBaoFixture openBao) : I
 
         await postgres.ExecuteAsOwnerAsync(
             $"""
+             DELETE FROM vault.exposure_source;
              DELETE FROM public.exposure;
              DELETE FROM public.scan_broker;
              DELETE FROM public.scan;

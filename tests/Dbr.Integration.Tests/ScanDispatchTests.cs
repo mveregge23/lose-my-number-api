@@ -107,6 +107,7 @@ public class ScanDispatchTests(PostgresFixture postgres, OpenBaoFixture openBao)
 
         await postgres.ExecuteAsOwnerAsync(
             $"""
+             DELETE FROM vault.exposure_source;
              DELETE FROM public.exposure;
              DELETE FROM public.scan_leg;
              DELETE FROM public.identity_release;

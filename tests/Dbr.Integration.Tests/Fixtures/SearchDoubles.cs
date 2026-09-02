@@ -85,13 +85,27 @@ public sealed class RecordingWorkDispatcher : IBrokerWorkDispatcher
 /// what it opened, so the identity a search receives is genuinely the one the vault
 /// released for that token.
 /// </remarks>
-public sealed class DirectReleaseClient(Func<string, CancellationToken, Task<ReleaseResponse?>> redeem)
+public sealed class DirectReleaseClient(
+    Func<string, CancellationToken, Task<ReleaseResponse?>> redeem,
+    Func<string, IReadOnlyList<ReportedListingPayload>, CancellationToken, Task<ReportFindingsResponse?>>? report = null)
     : IReleaseClient
 {
     public Task<ReleaseResponse?> RedeemAsync(string token, CancellationToken cancellationToken) =>
         redeem(token, cancellationToken);
 
+    public Task<ReportFindingsResponse?> ReportAsync(
+        string token,
+        IReadOnlyList<ReportedListingPayload> listings,
+        CancellationToken cancellationToken) =>
+        report is null
+            ? throw new InvalidOperationException(
+                "This edge was given no way to record findings, and something tried to. A test "
+                + "reaching here is one whose search found something it did not expect to.")
+            : report(token, listings, cancellationToken);
+
     /// <summary>An edge that refuses everything, however good the grant.</summary>
     public static DirectReleaseClient Refusing() =>
-        new((_, _) => Task.FromResult<ReleaseResponse?>(null));
+        new(
+            (_, _) => Task.FromResult<ReleaseResponse?>(null),
+            (_, _, _) => Task.FromResult<ReportFindingsResponse?>(null));
 }

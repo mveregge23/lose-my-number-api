@@ -703,6 +703,27 @@ Three things worth knowing if you run this:
 - **A finding below the confidence floor is not written down.** A listing that shares only a name is
   counted and dropped, not stored and hidden — the count is on the leg, and it is what tells you a
   bar is set wrong.
+- **The worker does not write findings; it reports them.** A finding names the listing it was found
+  on, and a broker's profile URL routinely spells out somebody's name and city — so it is a copy of
+  their identity and lives in the vault, which the worker cannot reach. It hands the finding to the
+  API over the internal edge, presenting the same grant that opened the identity. Without the edge
+  configured, a leg cannot record what it found any more than it can read a name.
+
+### Where a finding says it was found
+
+`public.exposure` keeps what is not identifying — which company, how sure, what state it is in — and
+a digest of the listing's address. The address itself is in `vault.exposure_source`, encrypted under
+a data key of its own and bound to that finding, so the bytes decrypt in that position and nowhere
+else.
+
+The digest is a comparison key rather than a secret: it is what stops one listing becoming two
+findings, and what lets a later scan recognise a listing it has already seen without decrypting
+anything. It is guessable for anyone who already has the URL, so it proves nothing — and it is
+absent from every API response, exactly as the address is.
+
+**A finding's address is never purged**, which it should be once a removal is confirmed and its
+verification window has passed. `KNOWN-GAPS.md` has that one; deleting an account still erases it,
+because destroying the tenant's wrapping key makes every finding permanently unreadable.
 
 Finding runs nobody has started reaches past the tenant boundary in the same way listing accounts
 does, and uses the same role. `dbr_scheduler` can read four columns of `scan`, and only the rows

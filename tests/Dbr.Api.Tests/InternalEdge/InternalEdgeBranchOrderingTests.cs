@@ -7,6 +7,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using Dbr.Api.InternalEdge;
+using Dbr.Domain.Monitoring;
 using Dbr.Domain.Profiles;
 using Dbr.Domain.Vault;
 using Microsoft.AspNetCore.Builder;
@@ -73,6 +74,11 @@ public class InternalEdgeBranchOrderingTests : IAsyncLifetime
         });
 
         builder.Services.AddSingleton<IIdentityReleaseService>(new NeverGrants());
+
+        // Registered because the branch maps both internal routes, and a route whose handler
+        // cannot be built fails the whole pipeline — which would show up here as every test
+        // returning 500 rather than as anything about ordering.
+        builder.Services.AddSingleton<IFindingReporter>(new NeverRecords());
 
         builder.AddDbrInternalEdge();
 
@@ -162,5 +168,19 @@ public class InternalEdgeBranchOrderingTests : IAsyncLifetime
 
         public Task<RedeemReleaseResult> RedeemAsync(string token, CancellationToken cancellationToken) =>
             Task.FromResult(RedeemReleaseResult.Refused());
+    }
+
+    /// <summary>The reporting half, refusing everything for the same reason.</summary>
+    /// <remarks>
+    /// These tests are about which listener a route answers on, so what the route would do is
+    /// beside the point — refusing keeps every response in this file about the pipeline.
+    /// </remarks>
+    private sealed class NeverRecords : IFindingReporter
+    {
+        public Task<ReportFindingsResult> ReportAsync(
+            string token,
+            IReadOnlyList<ReportedListing> listings,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(ReportFindingsResult.Refused());
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Monitoring;
 using Dbr.Domain.Vault;
 using Dbr.Infrastructure.Vault;
 using Microsoft.Extensions.Configuration;
@@ -50,6 +51,12 @@ public static class IdentityReleaseServiceCollectionExtensions
         services.AddScoped<IIdentityReleaseService, IdentityReleaseService>();
         services.AddScoped<IIdentityReleaseRedeemer>(
             provider => provider.GetRequiredService<IIdentityReleaseService>());
+
+        // The grant's other spend. Registered here rather than beside the scan services
+        // because it belongs to the same half of the split: recording a finding writes the
+        // listing's address into the vault, so it needs the keys and only exists where they
+        // are. A worker resolving this would be a worker that could decrypt.
+        services.AddScoped<IFindingReporter, FindingReporter>();
 
         return services;
     }

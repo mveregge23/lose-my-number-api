@@ -127,7 +127,11 @@ public static class InternalEdgeExtensions
             // Its own routing, so these endpoints live in a table the public listener has
             // no reference to rather than in the shared one behind a condition.
             branch.UseRouting();
-            branch.UseEndpoints(endpoints => endpoints.MapVaultReleaseEndpoints());
+            branch.UseEndpoints(endpoints =>
+            {
+                endpoints.MapVaultReleaseEndpoints();
+                endpoints.MapFindingEndpoints();
+            });
         });
 
         return app;
