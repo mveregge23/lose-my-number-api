@@ -1,0 +1,29 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+A challenge page in place of results, served with 403.
+
+Distinct from a throttle in the one way that matters to whatever decides what to do next:
+waiting does not fix it. The company has decided not to serve this instance, and the answer
+is a person looking at why rather than a longer backoff. Distinct from a changed page
+because the catalog entry is perfectly correct — there is simply nothing behind the wall to
+parse.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Verify you are human — Example People Finder</title>
+</head>
+<body>
+  <main class="challenge">
+    <h1>Before you continue</h1>
+    <p class="challenge-notice">
+      Our system has flagged unusual activity from your network. Complete the check below to
+      continue to Example People Finder.
+    </p>
+    <div class="challenge-widget" data-sitekey="example-challenge-key"></div>
+  </main>
+</body>
+</html>

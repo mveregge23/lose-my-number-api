@@ -1,0 +1,49 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Dbr.BrokerFixtures</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- YAML for the manifest, as the legal-basis files use it and for the same reason:
+         the people adding a fixture are describing what a page looks like, and a format
+         with comments is what lets the file say why a scenario exists beside the file it
+         points at. Kestrel because §21.4 asks for the real engine to run against
+         localhost exactly as it would against the broker's domain — a fake HttpClient
+         would test the parser and skip everything between it and a socket. -->
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For the one spelling of a search's outcome. A fixture declares what a search
+         should conclude from the page it records, and that claim has to be in the same
+         vocabulary the search contract answers in — a second copy of those cases here
+         would drift the first time one is added. -->
+    <ProjectReference Include="..\Dbr.Domain\Dbr.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Copied beside the binary rather than embedded in it, which is the opposite of
+         what Dbr.CatalogSync does with the legal-basis files. The reasoning there is that
+         a deployed image must not be able to disagree with a mounted path; none of it
+         applies here, because a fixture is never deployed. Both of its consumers — the
+         pipeline tests and the recipe dry-run CI runs on a pull request — execute from a
+         checkout of this repository, so the question is not "can the artifact disagree
+         with the disk" but "do both consumers read the same files". Copying keeps that
+         true and keeps a contributor's new fixture visible to a rebuild rather than to a
+         csproj edit.
+
+         Link preserves the directory structure under the output, so the broker a fixture
+         belongs to survives the copy — flattening would put two brokers' no-results.html
+         on top of each other. -->
+    <None Include="..\..\catalog\brokers\**\*"
+          Link="catalog\brokers\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

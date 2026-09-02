@@ -1,0 +1,70 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+Three people with one name. The first shares the address on file; the second is in the
+right city at a different address; the third is in another state entirely.
+
+The point of the scenario is that a search reports all three and judges none of them — it
+says what each listing agreed on and leaves the scoring to the one place that can mean the
+same thing on every company. Read against the profile the suite uses throughout, the three
+score roughly 0.5, 0.4 and 0.25, and only the last falls below the floor.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Search results for Alex Whitfield — Example People Finder</title>
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Example People Finder</a>
+  </header>
+
+  <main>
+    <h1 class="results-heading">3 results for &ldquo;Alex Whitfield&rdquo;</h1>
+
+    <ol class="results" data-result-count="3">
+      <li class="result" data-profile-id="ep-8814720">
+        <a class="result-name" href="/profile/ep-8814720">Alex Whitfield</a>
+        <span class="result-age">Age 41</span>
+        <div class="result-location">
+          <span class="result-city">Sacramento</span>,
+          <span class="result-state">CA</span>
+        </div>
+        <div class="result-addresses">
+          <span class="result-address">12 Rowan Lane, Sacramento, CA 95814</span>
+        </div>
+      </li>
+
+      <li class="result" data-profile-id="ep-2290155">
+        <a class="result-name" href="/profile/ep-2290155">Alex J. Whitfield</a>
+        <span class="result-age">Age 38</span>
+        <div class="result-location">
+          <span class="result-city">Sacramento</span>,
+          <span class="result-state">CA</span>
+        </div>
+        <div class="result-addresses">
+          <span class="result-address">4409 Bellhaven Court, Sacramento, CA 95826</span>
+        </div>
+      </li>
+
+      <li class="result" data-profile-id="ep-7731004">
+        <a class="result-name" href="/profile/ep-7731004">Alexandra Whitfield</a>
+        <span class="result-age">Age 62</span>
+        <div class="result-location">
+          <span class="result-city">Bangor</span>,
+          <span class="result-state">ME</span>
+        </div>
+        <div class="result-addresses">
+          <span class="result-address">88 Cedar Street, Bangor, ME 04401</span>
+        </div>
+      </li>
+    </ol>
+  </main>
+
+  <footer class="site-footer">
+    <a href="/opt-out">Remove my information</a>
+  </footer>
+</body>
+</html>

@@ -1031,6 +1031,9 @@ and prints per-test output, which is usually what you want while iterating.
 |---|---|---|
 | `Dbr.Infrastructure.Tests` | no | Mapping conventions, the tenant context, what the interceptor sends |
 | `Dbr.Migrator.Tests` | no | Migration filenames, set membership and ordering, misconfigured runs |
+| `Dbr.BrokerFixtures.Tests` | no | The recorded broker pages, and the local server that serves them |
+| `Dbr.CatalogSync.Tests` | no | The curated legal-basis files, read and validated without a database |
+| `Dbr.Api.Tests` | no | Request shapes, refusals, and the routes that are not on the public listener |
 | `Dbr.Integration.Tests` | **yes** | Tenant isolation and the migrations, against a real Postgres and a real OpenBao |
 
 `Dbr.Integration.Tests` starts its own throwaway containers with Testcontainers — it does not use
@@ -1042,6 +1045,47 @@ Tenant isolation is the one thing in this repository that cannot be tested any o
 property under test is what Postgres itself does when a session variable is missing, so an
 in-memory provider — which has no policies, no roles and no `current_setting` — would report
 success whether the boundary existed or not.
+
+### Recorded broker pages
+
+Nothing in the test suite talks to a real company. What stands in for one is a directory of
+recorded pages under `catalog/brokers/{brokerId}/fixtures/`, and a small HTTP server that serves
+them on `127.0.0.1` so the real search engine makes a real request and reads a real status line.
+
+A fixture set is one `fixtures.yaml` plus the pages it points at. The manifest is the interesting
+half: each scenario says **what the page is** and **what a search should conclude from it**.
+
+```yaml
+- name: rate-limited
+  kind: search
+  expect: rate-limited
+  description: >
+    The company throttled this instance and said so.
+  responses:
+    - status: 429
+      headers:
+        Retry-After: "120"
+      body: rate-limited.html
+```
+
+Recording the conclusion is what makes the set worth having. A page on its own only proves the
+engine does not crash on it; a page plus the answer it should produce is something a test can be
+exhaustive against — and `BrokerFixtureReader.Uncovered` fails the suite if any outcome a search
+can reach is demonstrated by no page anywhere. That is a claim about the library as a whole rather
+than about each company: nobody has to invent a bot wall for a broker that has never served one.
+
+Two things to know if you are adding a company:
+
+- **The directory name is the company's identity**, and a manifest naming a different one is
+  refused. Left alone it would serve one company's pages to a recipe that asked for another's, and
+  the test built on it would pass.
+- **`catalog/brokers/example-broker/` is invented and is the only one that ever should be.** It is
+  the worked example, and it is what the engine's own tests run against — pinning those to a real
+  company's markup would mean the engine's tests fail the day that company redesigns its site.
+
+The same fixtures are what CI dry-runs a recipe against, which is the point of them living in
+`catalog/` beside the recipe rather than under `tests/`: one fixture, two consumers, reached
+through the same reader so they cannot drift.
 
 To run the API against the containerized infrastructure, start the backing services only:
 

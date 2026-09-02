@@ -1,0 +1,38 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+Reached, and holding nothing.
+
+Recorded as its own page rather than left to be inferred from a parse that found no result
+blocks, because those are different facts that look identical to a selector: a page whose
+results container is empty, and a page whose results container has been renamed. The first
+is an answer and the second is a broken recipe, and a search that reported them alike would
+tell somebody they are not listed anywhere on the strength of a changed class name.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>No results for Alex Whitfield — Example People Finder</title>
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Example People Finder</a>
+  </header>
+
+  <main>
+    <h1 class="results-heading">0 results for &ldquo;Alex Whitfield&rdquo;</h1>
+
+    <ol class="results" data-result-count="0"></ol>
+
+    <p class="no-results">
+      We could not find anyone by that name. Try a different spelling, or search by city.
+    </p>
+  </main>
+
+  <footer class="site-footer">
+    <a href="/opt-out">Remove my information</a>
+  </footer>
+</body>
+</html>
