@@ -1,0 +1,40 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Dbr.Search</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Its own project rather than a folder in Dbr.Infrastructure, and the reason is the
+         input. This is the code that parses HTML written by a company with no interest in
+         being read, so what it can reach matters: no EF Core, no Npgsql, no message
+         transport, no vault. A bug in a selector engine is a bug in a selector engine.
+
+         AngleSharp for the parsing — a real HTML5 parser with real CSS selector support,
+         which is what lets a recipe be written in the vocabulary somebody already uses to
+         read a page. MIT, so no §15 licence question. Regular expressions over markup
+         would be the alternative and are not one: a recipe author would be writing them,
+         and the failure mode is a match against the wrong half of a page rather than an
+         error. -->
+    <PackageReference Include="AngleSharp" Version="1.7.2" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dbr.Domain\Dbr.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Beside the fixtures they are dry-run against, and copied for the same reason those
+         are: both live in catalog/ because they are reviewed content, and both are read
+         from a checkout rather than shipped inside an image. -->
+    <None Include="..\..\catalog\brokers\**\search.yaml"
+          Link="catalog\brokers\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

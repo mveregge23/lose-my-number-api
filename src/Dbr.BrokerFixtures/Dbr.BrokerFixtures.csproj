@@ -42,6 +42,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          belongs to survives the copy — flattening would put two brokers' no-results.html
          on top of each other. -->
     <None Include="..\..\catalog\brokers\**\*"
+          Exclude="..\..\catalog\brokers\**\search.yaml"
           Link="catalog\brokers\%(RecursiveDir)%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

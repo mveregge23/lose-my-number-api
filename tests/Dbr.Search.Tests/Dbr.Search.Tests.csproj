@@ -1,0 +1,35 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings come from Directory.Build.props. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Both halves of "one fixture, two consumers" meet here: the recipes and the recorded
+         pages they are dry-run against. Between them these two references bring the whole of
+         catalog/brokers/ into the output, which is what lets the dry-run below run every
+         recipe against every page recorded for its company without naming a single file.
+
+         No Docker and no database. Searching a company needs neither, and a tier that runs
+         in two seconds is one somebody actually runs before pushing. -->
+    <ProjectReference Include="..\..\src\Dbr.Search\Dbr.Search.csproj" />
+    <ProjectReference Include="..\..\src\Dbr.BrokerFixtures\Dbr.BrokerFixtures.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

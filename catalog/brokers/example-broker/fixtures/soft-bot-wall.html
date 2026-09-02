@@ -1,0 +1,41 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+A challenge page served with 200, which is how most of them actually arrive.
+
+The scenario that a status code cannot tell apart from anything else: to HTTP this is a
+perfectly good page. It has no result blocks and no "nobody by that name" marker, so without
+something naming the challenge a recipe would read it as its own selectors having gone stale
+and would raise a catalog issue against an entry that is entirely correct.
+
+That is what the `blocked` selector in the recipe is for, and this is the page that proves it
+does something. The markup deliberately carries a results-shaped container as well, because
+challenge pages are often the site's ordinary shell with the content swapped out — a check
+that only looked for the absence of results would get this wrong in the other direction.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Example People Finder</title>
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Example People Finder</a>
+  </header>
+
+  <main>
+    <h1 class="results-heading">Checking your browser</h1>
+
+    <ol class="results" data-result-count="0"></ol>
+
+    <div class="challenge-widget" data-sitekey="example-challenge-key">
+      <p>
+        Please enable JavaScript and complete the security check to access Example People
+        Finder.
+      </p>
+    </div>
+  </main>
+</body>
+</html>
