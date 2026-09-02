@@ -66,4 +66,23 @@ public class Exposure : ITenantScoped
     /// the second as the first.
     /// </remarks>
     public DateTimeOffset? LastVerifiedAt { get; set; }
+
+    /// <summary>
+    /// A digest of the listing's address, which itself lives encrypted in the vault.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Here so that one listing cannot become two findings — a results page that prints the
+    /// same profile twice, a redelivered report, two URLs differing by a tracking parameter —
+    /// and so that a later verification scan can recognise a listing it has seen before
+    /// without decrypting anything.
+    /// </para>
+    /// <para>
+    /// <b>Not a secret, and not shown to anybody.</b> A digest of a URL is guessable for
+    /// whoever already has the URL, so it proves nothing and hides nothing; it is a
+    /// comparison key. It is absent from every API response for the same reason the address
+    /// itself is.
+    /// </para>
+    /// </remarks>
+    public byte[]? SourceRefDigest { get; set; }
 }

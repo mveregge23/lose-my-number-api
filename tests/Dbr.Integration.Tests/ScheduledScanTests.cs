@@ -80,7 +80,8 @@ public class ScheduledScanTests(PostgresFixture postgres, OpenBaoFixture openBao
 
         await postgres.ExecuteAsOwnerAsync(
             """
-            DELETE FROM public.exposure;
+            DELETE FROM vault.exposure_source;
+             DELETE FROM public.exposure;
             DELETE FROM public.scan_broker;
             DELETE FROM public.scan;
             DELETE FROM public.consent_record;

@@ -97,4 +97,23 @@ public class IdentityRelease : ITenantScoped
     /// until then it is the record.
     /// </remarks>
     public DateTimeOffset? RedeemedAt { get; set; }
+
+    /// <summary>
+    /// When this leg recorded what it found, or <see langword="null"/> while it has not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The grant's second single-use spend. A finding now carries the address of the listing
+    /// it was found on, which is a copy of somebody's identity and belongs in the vault — so
+    /// the process that finds listings can no more write one than it can read a name, and
+    /// recording a finding became something it asks for with the grant it already holds.
+    /// </para>
+    /// <para>
+    /// <b>Separate from <see cref="RedeemedAt"/> because they are separate permissions.</b>
+    /// Opening an identity does not consume the right to say what was found with it, and the
+    /// question asked afterwards — was an identity decrypted, were findings written — has two
+    /// answers. A single column would give one.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? ReportedAt { get; set; }
 }

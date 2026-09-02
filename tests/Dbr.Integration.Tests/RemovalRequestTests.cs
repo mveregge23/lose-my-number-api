@@ -83,6 +83,7 @@ public class RemovalRequestTests(PostgresFixture postgres, OpenBaoFixture openBa
             $"""
              DELETE FROM public.removal_job;
              DELETE FROM public.removal_request;
+             DELETE FROM vault.exposure_source;
              DELETE FROM public.exposure;
              DELETE FROM public.scan_broker;
              DELETE FROM public.scan;

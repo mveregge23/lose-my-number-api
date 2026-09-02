@@ -229,25 +229,26 @@ anticipates a connector answering.
 
 ---
 
-## An exposure cannot yet say what it matched
+## A finding is never purged
 
-**Required by:** §3 gives `EXPOSURE` an `encryptedSourceRef` — the pointer to the specific broker
-profile page a match was found on — and classes it Restricted-PII, which puts it in the vault store
-under field-level envelope encryption alongside names and addresses. §1's minimization rule then
-requires purging it once the exposure is `removed` and its verification window has passed.
+**Required by:** §1's minimization rule. The pointer to the listing a match was found on is
+Restricted-PII and is kept only for as long as it is needed — once an exposure is `removed` and its
+verification window has passed, there is nothing left to point at and the address should be gone.
 
-**Today:** the `exposure` table has no such column, in either store — and scans now write exposures,
-so this has stopped being theoretical. A search hands back the listing it found; the leg scores the
-candidate, writes the finding, and **drops the pointer on the floor**. Two findings on one company
-are therefore told apart by their confidence and by nothing else, and there is no way to go back and
-look at what was found.
+**Today:** the address is stored, encrypted, in `vault.exposure_source`, and nothing deletes it. It
+outlives the removal it justified.
 
-**What closing it involves, roughly:** a vault-side table keyed by exposure id, in the same shape as
-`vault.profile_identity`, plus a release path for whatever needs to read it and the purge that
-minimization requires. It was left out rather than stubbed because the alternative was a column on
-the core table, and a nullable `bytea` sitting in `public.exposure` is exactly the kind of thing a
-later story fills in without noticing which store it is in — which is the whole distinction the
-vault exists to hold.
+Two things soften it and neither closes it. Destroying a tenant's wrapping key on account deletion
+makes every one of their findings permanently unreadable, including in backups — so **erasure works**
+and it is retention that does not. And the state the purge triggers on cannot be reached yet:
+nothing drives an exposure to `removed`, because verification scans are the entry above this one.
+
+**What closing it involves, roughly:** a sweep over exposures that are `removed` with a verification
+window behind them, deleting the vault row and leaving the finding's history — which is the point,
+since the history is what stops a later scan re-offering the same listing as a fresh discovery. It
+is deliberately not built yet: with nothing able to reach `removed`, a purge would be written
+against a state no row has ever held, which is the same objection recorded against building the
+scoped release early.
 
 ---
 

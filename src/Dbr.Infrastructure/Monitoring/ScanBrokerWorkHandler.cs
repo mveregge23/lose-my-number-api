@@ -233,7 +233,7 @@ public sealed class ScanBrokerWorkHandler(
         switch (result)
         {
             case SearchResult.Found found:
-                Record(work, leg, found);
+                await RecordAsync(work, leg, found, cancellationToken).ConfigureAwait(false);
                 break;
 
             case SearchResult.NothingFound:
@@ -248,53 +248,84 @@ public sealed class ScanBrokerWorkHandler(
     }
 
     /// <summary>
-    /// Turns candidates into the findings somebody is shown, and counts the rest.
+    /// Hands the candidates over to be recorded, and writes down how it went.
     /// </summary>
     /// <remarks>
-    /// <b>What falls below the bar is not written anywhere.</b> An exposure is a durable
-    /// record that a company probably holds this person's data, so rows nobody will ever be
-    /// shown would retain more of somebody than this service does anything with. The count
-    /// is what survives, and it is what tells an operator that a bar is set wrong — a
-    /// company offering forty candidates a run and recording none is a search matching too
-    /// loosely or a floor set too high, and neither is visible from the findings, because
-    /// the ones that did not clear were never there.
+    /// <para>
+    /// <b>This process no longer writes a finding, and that changed with the source
+    /// reference.</b> An exposure used to hold nothing restricted — a company, a status, a
+    /// number — so writing one here was harmless. A finding now points at the listing it was
+    /// found on, and a broker's profile URL routinely spells out the name and the city of the
+    /// person it is about, which makes it a copy of the identity rather than a pointer to
+    /// one. So it belongs in the vault, and this process holds no keys: recording a finding
+    /// became something it asks for with the grant it already has, exactly as reading a name
+    /// is.
+    /// </para>
+    /// <para>
+    /// <b>The floor is applied on the far side rather than here.</b> The leg reports what it
+    /// saw; what is worth showing anybody is decided by the process that keeps it, and a
+    /// worker applying the bar would be a worker that could choose not to.
+    /// </para>
     /// </remarks>
-    private void Record(ScanBrokerWork work, ScanLeg leg, SearchResult.Found found)
+    private async Task RecordAsync(
+        ScanBrokerWork work,
+        ScanLeg leg,
+        SearchResult.Found found,
+        CancellationToken cancellationToken)
     {
-        var discoveredAt = clock.GetUtcNow();
-
         leg.Outcome = ScanLegOutcome.Found;
         leg.CandidatesFound = found.Candidates.Count;
 
-        foreach (var candidate in found.Candidates)
+        var listings = found.Candidates
+            .Select(candidate => new ReportedListingPayload(
+                candidate.SourceRef.AbsoluteUri,
+                [
+                    .. candidate.Matches.Select(match => new MatchPayload(
+                        IdentityVocabulary.ToWire(match.Field),
+                        Wire(match.Strength))),
+                ]))
+            .ToList();
+
+        var reported = await releases
+            .ReportAsync(work.ReleaseToken, listings, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (reported is null)
         {
-            var confidence = MatchConfidence.Score(candidate.Matches);
+            // The company answered and its findings could not be written down. That is not the
+            // company's fault and it is not "nothing found", so it is recorded as what it is:
+            // a grant that would not spend. The leg is over either way — the grant is gone and
+            // another attempt needs a fresh one.
+            leg.Outcome = ScanLegOutcome.ReleaseRefused;
+            leg.Detail =
+                "The company answered and this leg's grant would not record what it found. It "
+                + "expired while the search ran, or its findings were already recorded.";
 
-            if (!MatchConfidence.ClearsFloor(confidence))
-            {
-                continue;
-            }
+            logger.LogWarning(
+                "Scan {ScanId} leg for broker {BrokerId} found {Count} listings and could not "
+                + "record them: the grant was refused.",
+                work.ScanId,
+                work.BrokerId,
+                found.Candidates.Count);
 
-            core.Set<Exposure>().Add(new Exposure
-            {
-                Id = Guid.NewGuid(),
-                TenantId = work.TenantId,
-                ScanId = work.ScanId,
-                PrivacyProfileId = work.PrivacyProfileId,
-                BrokerId = work.BrokerId,
-                Status = ExposureStatus.New,
-                Confidence = confidence,
-                DiscoveredAt = discoveredAt,
-
-                // Nothing points at the listing yet. The pointer is a third party's copy of
-                // somebody's identity and belongs in the vault, which is its own story —
-                // until then two findings on one company are told apart by their confidence
-                // and by nothing else.
-            });
-
-            leg.CandidatesRecorded++;
+            return;
         }
+
+        leg.CandidatesRecorded = reported.Recorded;
     }
+
+    /// <summary>How a degree of agreement is spelled as it crosses the edge.</summary>
+    private static string Wire(MatchStrength strength) => strength switch
+    {
+        MatchStrength.Exact => "exact",
+        MatchStrength.Partial => "partial",
+        MatchStrength.Conflicting => "conflicting",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(strength),
+            strength,
+            "Unspelled match strength. A degree of agreement that cannot cross the edge is one "
+            + "no finding could ever be recorded with."),
+    };
 
     /// <summary>
     /// The identity as the search takes it, rebuilt from what crossed the edge.
