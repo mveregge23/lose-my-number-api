@@ -301,6 +301,9 @@ public class ScanDispatchTests(PostgresFixture postgres, OpenBaoFixture openBao)
         var fields = await postgres.QueryAsOwnerAsync<string[]>(
             $"SELECT fields FROM public.identity_release WHERE scan_id = '{scanId}'");
 
+        // Asserted present before it is read: no row at all and a row covering no fields are
+        // different failures, and Order() on the first would report the second.
+        Assert.NotNull(fields);
         Assert.Equal(["addresses", "names"], fields.Order().ToArray());
     }
 
@@ -590,9 +593,22 @@ public class ScanDispatchTests(PostgresFixture postgres, OpenBaoFixture openBao)
         return [.. ids];
     }
 
-    private Task<string> StatusOfAsync(Guid scanId) =>
-        postgres.QueryAsOwnerAsync<string>(
+    /// <summary>
+    /// The run's status, which every caller here expects to exist.
+    /// </summary>
+    /// <remarks>
+    /// Null would mean the scan is not in the table at all, which no test here is about —
+    /// so it fails as a missing row rather than as an unequal string three lines later.
+    /// </remarks>
+    private async Task<string> StatusOfAsync(Guid scanId)
+    {
+        var status = await postgres.QueryAsOwnerAsync<string>(
             $"SELECT status FROM public.scan WHERE id = '{scanId}'");
+
+        Assert.NotNull(status);
+
+        return status;
+    }
 
     private Task<Guid> IdOfAsync(string sql) => postgres.QueryAsOwnerAsync<Guid>(sql);
 }
