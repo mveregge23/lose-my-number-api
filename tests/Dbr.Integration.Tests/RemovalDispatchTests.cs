@@ -5,8 +5,13 @@ using System.Net;
 using Dbr.Domain.Catalog;
 using Dbr.Domain.Connectors;
 using Dbr.Domain.Messaging;
+using Dbr.Domain.Monitoring;
+using Dbr.Domain.Profiles;
 using Dbr.Domain.Removals;
+using Dbr.Domain.Search;
+using Dbr.Domain.Vault;
 using Dbr.Infrastructure.DependencyInjection;
+using Dbr.Infrastructure.InternalEdge;
 using Dbr.Infrastructure.Removals;
 using Dbr.Infrastructure.Tenancy;
 using Dbr.Integration.Tests.Fixtures;
@@ -177,6 +182,38 @@ public class RemovalDispatchTests(PostgresFixture postgres, OpenBaoFixture openB
         // The name the attempt is recorded under comes from the registration rather than
         // from the connector, which is what lets one engine serve many companies.
         Assert.Equal("templated-email", await ConnectorOfAsync(work.RemovalJobId));
+    }
+
+    /// <summary>
+    /// An attempt whose grant will not mint is recorded, and the demand goes back.
+    /// </summary>
+    /// <remarks>
+    /// Reachable because the two checks look at different things: the contract refuses a
+    /// connector that declares no fields when it is handed a context, and the dispatcher
+    /// mints before any context exists. So this is turned away by the release path, and
+    /// what matters is that it does not leave an attempt sitting pending forever — no
+    /// message is coming for a grant that was never issued.
+    /// </remarks>
+    [Fact]
+    public async Task An_attempt_whose_grant_will_not_mint_is_recorded_and_requeued()
+    {
+        var account = await OpenAccountAsync();
+        var requestId = await OpenDemandAsync(account, _brokerId);
+
+        _connectors.With(_brokerId, StubBrokerConnector.NeedingNothing());
+
+        var result = await DispatchAsync(account, requestId);
+
+        Assert.Equal(RemovalDispatchOutcome.ReleaseRefused, result.Outcome);
+        Assert.Equal("queued", await StatusAsync(requestId));
+        Assert.Equal(1, await JobCountAsync(requestId));
+        Assert.Empty(_lanes.Sent);
+
+        var jobId = await postgres.QueryAsOwnerAsync<Guid>(
+            $"SELECT id FROM public.removal_job WHERE removal_request_id = '{requestId}'");
+
+        Assert.Equal("failed", await JobStatusAsync(jobId));
+        Assert.Equal("unsupported", await FailureReasonAsync(jobId));
     }
 
     /// <summary>
@@ -439,13 +476,8 @@ public class RemovalDispatchTests(PostgresFixture postgres, OpenBaoFixture openB
     /// <summary>
     /// The connector is handed a demand describing what is being asked and by when.
     /// </summary>
-    /// <remarks>
-    /// And it is handed no identity, which is this story's own finding rather than an
-    /// oversight: the vault's scoped release is keyed to a scan, so there is no way to open
-    /// one for an attempt. A real connector answers that it cannot work, which is correct.
-    /// </remarks>
     [Fact]
-    public async Task A_connector_is_told_what_is_demanded_and_given_no_identity()
+    public async Task A_connector_is_told_what_is_demanded()
     {
         var connector = StubBrokerConnector.Answering(new ConnectorResult.AlreadyClear());
         var (account, _, work) = await DispatchedAsync(connector);
@@ -460,11 +492,96 @@ public class RemovalDispatchTests(PostgresFixture postgres, OpenBaoFixture openB
         Assert.Equal(BrokerDomain, context.Broker.Domain);
         Assert.Equal(1, context.AttemptNumber);
 
-        // Nothing was released, because nothing can be.
-        Assert.Empty(context.ReleasedIdentity.Names);
-        Assert.Null(context.ReleasedIdentity.DateOfBirth);
+        // The listing is in the vault under a key of its own that nothing mints a release
+        // for yet, so a demand cites nothing — which is an ordinary demand.
         Assert.Null(context.SourceRef);
     }
+
+    /// <summary>
+    /// The connector receives exactly the groups it declared, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// The guarantee the whole scoped release exists for, and the one worth asserting from
+    /// both ends: this connector names only <c>Names</c>, and the profile behind it has a
+    /// date of birth and a contact on file. Both stay in the vault. The point is not that
+    /// the connector chose not to look — it is that there was no moment at which it could,
+    /// because the grant minted for this attempt never covered them.
+    /// </remarks>
+    [Fact]
+    public async Task A_connector_is_given_the_groups_it_declared_and_no_others()
+    {
+        var connector = StubBrokerConnector.Answering(new ConnectorResult.AlreadyClear());
+        var (account, _, work) = await DispatchedAsync(connector);
+
+        await HandleAsync(account, work);
+
+        var identity = Assert.IsType<ConnectorContext>(connector.LastContext).ReleasedIdentity;
+
+        Assert.Equal(["Alex Whitfield"], identity.Names);
+
+        // On the profile, and never asked for.
+        Assert.Null(identity.DateOfBirth);
+        Assert.Empty(identity.Contacts);
+        Assert.Empty(identity.Addresses);
+    }
+
+    /// <summary>
+    /// A grant is single-use, so a second attempt on the same message opens nothing.
+    /// </summary>
+    /// <remarks>
+    /// Not reachable through the ordinary path — the attempt guard stops a repeat delivery
+    /// before the grant is presented — so this spends the token by hand first and then
+    /// hands the message over. What is being asserted is that the release, and not only the
+    /// attempt row, is what stops the second run.
+    /// </remarks>
+    [Fact]
+    public async Task A_grant_that_has_already_been_spent_opens_nothing()
+    {
+        var (account, requestId, work) = await DispatchedAsync(
+            StubBrokerConnector.Answering(new ConnectorResult.AlreadyClear()));
+
+        Assert.NotNull(await RedeemAsync(work.ReleaseToken, TestContext.Current.CancellationToken));
+
+        await HandleAsync(account, work);
+
+        Assert.Equal("queued", await StatusAsync(requestId));
+        Assert.Equal("failed", await JobStatusAsync(work.RemovalJobId));
+        Assert.Equal("transient", await FailureReasonAsync(work.RemovalJobId));
+    }
+
+    /// <summary>
+    /// A grant minted for an attempt cannot be spent to record findings.
+    /// </summary>
+    /// <remarks>
+    /// The two spends are different permissions over one token, and only a scan leg has the
+    /// second. Findings belong to the run that found them; filing one against a demand would
+    /// mean an exposure hanging off a search that never happened.
+    /// </remarks>
+    [Fact]
+    public async Task An_attempts_grant_cannot_be_spent_on_findings()
+    {
+        var (_, _, work) = await DispatchedAsync(
+            StubBrokerConnector.Answering(new ConnectorResult.AlreadyClear()));
+
+        using var scope = _factory.Services.CreateScope();
+
+        var reported = await scope.ServiceProvider
+            .GetRequiredService<IFindingReporter>()
+            .ReportAsync(
+                work.ReleaseToken,
+                [
+                    new ReportedListing(
+                        new Uri($"https://{BrokerDomain}/profile/1"),
+                        [new FieldMatch(IdentityField.Names, MatchStrength.Exact)]),
+                ],
+                TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(ReportFindingsOutcome.Recorded, reported.Outcome);
+        Assert.Equal(0, await ExposureCountAsync());
+    }
+
+    private async Task<long> ExposureCountAsync() =>
+        await postgres.QueryAsOwnerAsync<long>("SELECT count(*) FROM public.exposure");
 
     /// <summary>
     /// A demand cancelled while its attempt was in the lane is not sent.
@@ -674,6 +791,19 @@ public class RemovalDispatchTests(PostgresFixture postgres, OpenBaoFixture openB
                 token);
         }
 
+        // A real identity on the profile, because the whole point of a grant is that a
+        // connector receives some of it — and an empty profile makes a scoped release and a
+        // broken one look identical.
+        await _api.PutAsync(
+            "/api/v1/profile",
+            new
+            {
+                names = new[] { "Alex Whitfield" },
+                dateOfBirth = "1985-04-17",
+                contacts = new[] { new { kind = "email", value = "alex@example.test" } },
+            },
+            token);
+
         var (_, scan) = await _api.PostAsync(ScansPath, new { }, token);
 
         return new Account(token, ApiClient.TenantId(session), scan.GetProperty("profileId").GetGuid());
@@ -700,6 +830,17 @@ public class RemovalDispatchTests(PostgresFixture postgres, OpenBaoFixture openB
         services.AddLogging();
         services.AddDbrPersistence(configuration);
 
+        // Minting, and nothing that can open what it mints. The claim this container makes
+        // is the same one the scan dispatcher's does: a grant is a row of random bytes
+        // against the core store, so the process that sends demands can write one without
+        // ever acquiring the ability to spend it.
+        services.AddDbrReleaseMinting(configuration);
+
+        // Spending it goes to the process that does hold the keys, which here is the API
+        // factory's container rather than a listener with mutual TLS in front of it. What is
+        // being asserted is what an attempt does with a real identity, not the handshake.
+        services.AddSingleton<IReleaseClient>(new DirectReleaseClient(RedeemAsync));
+
         services.AddSingleton<IBrokerConnectorRegistry>(_connectors);
         services.AddSingleton<IBrokerWorkDispatcher>(_lanes);
         services.AddSingleton<IQueuedRemovalDirectory>(
@@ -711,6 +852,52 @@ public class RemovalDispatchTests(PostgresFixture postgres, OpenBaoFixture openB
         services.AddScoped<RemovalJobWorkHandler>();
 
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// The edge, without the edge: a real redemption, shaped the way the route shapes it.
+    /// </summary>
+    /// <remarks>
+    /// The grant is spent against the real service, so the identity a connector receives is
+    /// genuinely the one the vault released for that token — including which groups it
+    /// covered and which it left alone.
+    /// </remarks>
+    private async Task<ReleaseResponse?> RedeemAsync(string token, CancellationToken cancellationToken)
+    {
+        using var scope = _factory.Services.CreateScope();
+
+        var result = await scope.ServiceProvider
+            .GetRequiredService<IIdentityReleaseRedeemer>()
+            .RedeemAsync(token, cancellationToken);
+
+        if (result.Release is not { } release)
+        {
+            return null;
+        }
+
+        return new ReleaseResponse(
+            release.ScanId,
+            release.RemovalJobId,
+            release.BrokerId,
+            [.. release.Fields.Select(IdentityVocabulary.ToWire)],
+            release.Identity.Names,
+            [
+                .. release.Identity.Addresses.Select(address => new ReleasedAddress(
+                    address.Id,
+                    address.Line1,
+                    address.Line2,
+                    address.City,
+                    address.Region,
+                    address.PostalCode,
+                    address.Country)),
+            ],
+            [
+                .. release.Identity.Contacts.Select(contact => new ReleasedContact(
+                    contact.Id,
+                    contact.Kind.ToString().ToLowerInvariant(),
+                    contact.Value)),
+            ],
+            release.Identity.DateOfBirth);
     }
 
     private sealed record Account(string Token, Guid TenantId, Guid ProfileId);

@@ -60,6 +60,18 @@ public enum RemovalDispatchOutcome
     NoConnector,
 
     /// <summary>
+    /// The attempt exists and no grant could be minted for it.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from having no connector, because the two say different things: one is a
+    /// company this build cannot ask, the other is a fault in the release path — a demand
+    /// that moved on while it was being dispatched, or a company the attempt is not
+    /// addressed to. The attempt is recorded as failed and the demand returns to the queue,
+    /// since a message will never arrive for a grant that was never issued.
+    /// </remarks>
+    ReleaseRefused,
+
+    /// <summary>
     /// The company is no longer one this instance dispatches against.
     /// </summary>
     /// <remarks>

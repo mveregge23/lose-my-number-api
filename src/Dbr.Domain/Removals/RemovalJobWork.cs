@@ -21,14 +21,12 @@ namespace Dbr.Domain.Removals;
 /// class as a status.
 /// </para>
 /// <para>
-/// <b>And nothing here is a grant, which is the difference from the scan side.</b> A scan's
-/// work carries a release token because a search cannot ask a company anything without a
-/// name to ask about. A removal needs one just as badly and there is no way to mint it: the
-/// release is scoped to a scan by its own schema, and widening it to an attempt is its own
-/// story. So this message carries the attempt and not the means to open it, and the handler
-/// runs the connector with whatever it was released — which today is nothing. That is
-/// recorded on the attempt rather than hidden: a connector handed no identity answers that
-/// it cannot work, which is the correct answer and the honest one.
+/// <b>A grant in a queue is why grants expire quickly.</b> This message sits in its lane
+/// until the company may next be spoken to, and for that whole time it is a decryption
+/// right in a broker. The window is sized to the work rather than to the depth of the
+/// queue, so an attempt that waited too long finds its grant refused — recorded as the
+/// attempt being over rather than retried, since the token is single-use and another go at
+/// the same one would be refused for the same reason.
 /// </para>
 /// </remarks>
 /// <param name="TenantId">
@@ -40,10 +38,31 @@ namespace Dbr.Domain.Removals;
 /// Which try this is, from one. The same number the attempt row carries, so a redelivered
 /// message resolves to the attempt it was sent for rather than to whichever is latest.
 /// </param>
+/// <param name="ReleaseToken">
+/// The grant to present. Minted for this attempt and this attempt only, covering exactly
+/// the groups the connector declared it needs.
+/// </param>
 public sealed record RemovalJobWork(
     Guid RemovalRequestId,
     Guid RemovalJobId,
     Guid TenantId,
     Guid BrokerId,
     Guid PrivacyProfileId,
-    int AttemptNumber) : IBrokerScopedMessage;
+    int AttemptNumber,
+    string ReleaseToken) : IBrokerScopedMessage
+{
+    /// <summary>
+    /// Names the ids and withholds the grant.
+    /// </summary>
+    /// <remarks>
+    /// A record prints every member it has, and one of these is a bearer credential for part
+    /// of somebody's identity. The same refusal the identity types and the scan side's work
+    /// carry: a queue envelope, a retry log or an exception message is one interpolation
+    /// away.
+    /// </remarks>
+    public override string ToString() =>
+        $"RemovalJobWork {{ RemovalRequestId = {RemovalRequestId}, "
+        + $"RemovalJobId = {RemovalJobId}, TenantId = {TenantId}, BrokerId = {BrokerId}, "
+        + $"PrivacyProfileId = {PrivacyProfileId}, AttemptNumber = {AttemptNumber}, "
+        + "[withheld] }";
+}

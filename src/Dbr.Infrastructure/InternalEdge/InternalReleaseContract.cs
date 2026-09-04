@@ -51,6 +51,12 @@ public sealed record ReleasedContact(Guid Id, string Kind, string Value)
 /// it is before the request line was read.
 /// </para>
 /// <para>
+/// Exactly one of <see cref="ScanId"/> and <see cref="RemovalJobId"/> comes back set, which
+/// is how a worker holding one token knows which piece of its own work it opened. Both are
+/// echoed rather than the caller being trusted to remember, because the two travel different
+/// lanes and a worker draining both should not have to correlate by timing.
+/// </para>
+/// <para>
 /// <see cref="Fields"/> is what the grant covered, echoed back rather than inferred. A
 /// group that comes back empty is either one the grant did not name or one the profile has
 /// nothing in, and those are the same answer for matching purposes — but a worker deciding
@@ -58,7 +64,8 @@ public sealed record ReleasedContact(Guid Id, string Kind, string Value)
 /// </para>
 /// </remarks>
 public sealed record ReleaseResponse(
-    Guid ScanId,
+    Guid? ScanId,
+    Guid? RemovalJobId,
     Guid BrokerId,
     IReadOnlyList<string> Fields,
     IReadOnlyList<string> Names,
@@ -75,7 +82,8 @@ public sealed record ReleaseResponse(
     /// is the last place a name should end up in a log line.
     /// </remarks>
     public override string ToString() =>
-        $"ReleaseResponse {{ ScanId = {ScanId}, BrokerId = {BrokerId}, "
+        $"ReleaseResponse {{ ScanId = {ScanId}, RemovalJobId = {RemovalJobId}, "
+        + $"BrokerId = {BrokerId}, "
         + $"Fields = {Fields.Count}, Names = {Names.Count}, Addresses = {Addresses.Count}, "
         + $"Contacts = {Contacts.Count}, [withheld] }}";
 }

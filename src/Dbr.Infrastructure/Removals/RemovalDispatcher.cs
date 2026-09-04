@@ -5,6 +5,7 @@ using Dbr.Domain.Catalog;
 using Dbr.Domain.Connectors;
 using Dbr.Domain.Messaging;
 using Dbr.Domain.Removals;
+using Dbr.Domain.Vault;
 using Dbr.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -43,6 +44,7 @@ namespace Dbr.Infrastructure.Removals;
 public sealed class RemovalDispatcher(
     DbrDbContext core,
     IBrokerConnectorRegistry connectors,
+    IIdentityReleaseMinter minter,
     IBrokerWorkDispatcher lanes,
     TimeProvider clock,
     ILogger<RemovalDispatcher> logger)
@@ -139,13 +141,54 @@ public sealed class RemovalDispatcher(
 
         await core.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
+        // Minted after the attempt exists, because the grant is scoped to it. The
+        // declaration is what the grant covers, so a connector that never names a date of
+        // birth cannot cause one to be decrypted — not because nothing asks at the wrong
+        // moment, but because there is no moment at which it could.
+        var minted = await minter
+            .MintForJobAsync(
+                job.Id,
+                request.BrokerId,
+                registration.Connector.Capabilities.RequiredFields,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (minted.Release is null)
+        {
+            // The attempt exists and cannot be carried out. Recorded as a failed attempt
+            // rather than left pending, because a message is never going to arrive for it —
+            // and the demand goes back to the queue so the next pass mints a fresh grant.
+            job.Status = RemovalJobStatus.Failed;
+            job.FailureReason = ConnectorFailureReason.Unsupported;
+            job.Detail = $"No grant could be minted for this attempt: {minted.Outcome}.";
+
+            await core.Set<RemovalRequest>()
+                .Where(row => row.Id == removalRequestId)
+                .ExecuteUpdateAsync(
+                    update => update.SetProperty(row => row.Status, RemovalRequestStatus.Queued),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await core.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+            logger.LogWarning(
+                "Removal request {RequestId} could not mint a grant for broker {BrokerId}: "
+                + "{Outcome}. It stays queued.",
+                removalRequestId,
+                request.BrokerId,
+                minted.Outcome);
+
+            return RemovalDispatchResult.Failed(RemovalDispatchOutcome.ReleaseRefused);
+        }
+
         var work = new RemovalJobWork(
             request.Id,
             job.Id,
             request.TenantId,
             request.BrokerId,
             request.PrivacyProfileId,
-            attemptNumber);
+            attemptNumber,
+            minted.Release.Token);
 
         await lanes.DispatchAsync(work, cancellationToken).ConfigureAwait(false);
 

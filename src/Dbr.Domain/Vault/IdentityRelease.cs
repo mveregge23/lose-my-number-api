@@ -45,16 +45,39 @@ public class IdentityRelease : ITenantScoped
     /// <summary>The account whose identity this permits reading.</summary>
     public Guid TenantId { get; init; }
 
-    /// <summary>The run this leg belongs to.</summary>
-    public required Guid ScanId { get; init; }
+    /// <summary>
+    /// The run this leg belongs to, or <see langword="null"/> when this grant is for an
+    /// attempt at a removal rather than a leg of a scan.
+    /// </summary>
+    /// <remarks>
+    /// Exactly one of this and <see cref="RemovalJobId"/> is set, which the database checks.
+    /// A grant naming neither would be a decryption right belonging to no work at all, and
+    /// one naming both would be two pieces of work sharing a single-use token.
+    /// </remarks>
+    public Guid? ScanId { get; init; }
+
+    /// <summary>
+    /// The attempt this grant belongs to, or <see langword="null"/> when it is a scan leg's.
+    /// </summary>
+    /// <remarks>
+    /// A connector filling in a company's form or composing a deletion demand needs a name
+    /// exactly as a search does. Its own column rather than a shared one carrying a kind
+    /// beside it, because a column that references nothing can name a row that does not
+    /// exist — and the check that it does not would live in whichever code path remembered.
+    /// </remarks>
+    public Guid? RemovalJobId { get; init; }
 
     /// <summary>The company this leg is addressed to.</summary>
     public required Guid BrokerId { get; init; }
 
     /// <summary>Which identity is being released.</summary>
     /// <remarks>
-    /// Denormalized from the scan and pinned to it by a foreign key over the pair, so the
-    /// grant cannot come to name a different profile than the run it was minted for.
+    /// Read from the work at minting rather than accepted from the caller, so there is no
+    /// second chance to name the wrong identity: the run already settled whose it searches
+    /// for, and the demand already settled whose it is made on behalf of. The pairing the
+    /// database enforces is with the <i>account</i> — a profile belonging to somebody else
+    /// is refused — and not with the work, which is a weaker guarantee than this comment
+    /// used to claim and is worth stating accurately.
     /// </remarks>
     public required Guid PrivacyProfileId { get; init; }
 

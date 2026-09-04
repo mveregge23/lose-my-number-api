@@ -22,10 +22,10 @@ namespace Dbr.Infrastructure.DependencyInjection;
 /// </para>
 /// <para>
 /// <b>What it does not require is again the point.</b> Not the vault and not the key
-/// manager. Dispatching a demand claims a row and writes an attempt, both against the core
-/// store, so the process that sends demands never acquires the ability to open an identity —
-/// which matters more here than on the scan side, because this is the process that will
-/// drive a browser against a company's site.
+/// manager. Dispatching a demand claims a row, writes an attempt and mints a grant — and
+/// minting is a row of random bytes against the core store, so the process that sends
+/// demands never acquires the ability to open one. That matters more here than on the scan
+/// side, because this is the process that will drive a browser against a company's site.
 /// </para>
 /// </remarks>
 public static class RemovalDispatchServiceCollectionExtensions
@@ -75,6 +75,11 @@ public static class RemovalDispatchServiceCollectionExtensions
         services.AddSingleton<IQueuedRemovalDirectory>(new QueuedRemovalDirectory(connectionString));
 
         services.AddDbrConnectorRegistry();
+
+        // Minting, and deliberately not redeeming. Writing down that an attempt may see part
+        // of an identity is a row of random bytes against the core store; opening one needs
+        // the keys, which this process does not have and asks the edge for.
+        services.AddDbrReleaseMinting(configuration);
 
         services.AddScoped<IRemovalDispatcher, RemovalDispatcher>();
         services.AddScoped<RemovalJobWorkHandler>();

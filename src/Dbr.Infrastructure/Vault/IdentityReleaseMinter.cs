@@ -4,6 +4,7 @@
 using Dbr.Domain.Catalog;
 using Dbr.Domain.Monitoring;
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Removals;
 using Dbr.Domain.Vault;
 using Dbr.Infrastructure.Persistence;
 using Dbr.Infrastructure.Tenancy;
@@ -98,6 +99,81 @@ public sealed class IdentityReleaseMinter(
             // signature would be a second chance to name the wrong identity, and the run
             // already settled which one is being searched for.
             PrivacyProfileId = scan.PrivacyProfileId,
+            TokenHash = hash,
+            Fields = wanted,
+            IssuedAt = now,
+            ExpiresAt = expiresAt,
+        });
+
+        await core.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return MintReleaseResult.Minted(new MintedRelease(id, token, expiresAt));
+    }
+
+    public async Task<MintReleaseResult> MintForJobAsync(
+        Guid removalJobId,
+        Guid brokerId,
+        IReadOnlyCollection<IdentityField> fields,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+
+        var tenantId = RequireTenant();
+        var wanted = fields.Distinct().ToArray();
+
+        if (wanted.Length == 0)
+        {
+            return MintReleaseResult.Failed(MintReleaseOutcome.NothingRequested);
+        }
+
+        // The attempt and the demand behind it, in one read. The demand is what carries
+        // the identity and the company; the attempt is what the grant is scoped to, so
+        // both have to be there and both have to belong to this account.
+        var work = await core.Set<RemovalJob>()
+            .Where(row => row.Id == removalJobId)
+            .Join(
+                core.Set<RemovalRequest>(),
+                job => job.RemovalRequestId,
+                request => request.Id,
+                (job, request) => new { job.Status, request.PrivacyProfileId, request.BrokerId })
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (work is null)
+        {
+            return MintReleaseResult.Failed(MintReleaseOutcome.JobNotFound);
+        }
+
+        // An attempt that already ran minting a fresh decryption right is the case this
+        // refuses, and it is the stronger of the two runnable checks. On the scan side a
+        // late leg reads a page nobody sees; here it would open an identity in order to
+        // send a company a demand that has already been sent or withdrawn.
+        if (work.Status is not (RemovalJobStatus.Pending or RemovalJobStatus.Running))
+        {
+            return MintReleaseResult.Failed(MintReleaseOutcome.JobNotRunnable);
+        }
+
+        // No narrowing to check against, unlike a scan: a demand names exactly one company.
+        // Either this is it, or the caller has confused two pieces of work.
+        if (work.BrokerId != brokerId)
+        {
+            return MintReleaseResult.Failed(MintReleaseOutcome.BrokerNotForThisJob);
+        }
+
+        var (token, hash) = ReleaseTokens.Create();
+        var now = clock.GetUtcNow();
+        var expiresAt = now + options.Lifetime;
+        var id = Guid.NewGuid();
+
+        core.Set<IdentityRelease>().Add(new IdentityRelease
+        {
+            Id = id,
+            TenantId = tenantId,
+            RemovalJobId = removalJobId,
+            BrokerId = brokerId,
+
+            // Taken from the demand for the reason the scan path takes it from the run.
+            PrivacyProfileId = work.PrivacyProfileId,
             TokenHash = hash,
             Fields = wanted,
             IssuedAt = now,

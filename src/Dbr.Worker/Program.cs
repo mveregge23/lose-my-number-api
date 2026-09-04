@@ -51,12 +51,16 @@ builder.Services.AddDbrMessaging(builder.Configuration, lanes =>
     // Telling a company to stop holding somebody's data, which is the other kind of work
     // these lanes were built for and the one that shares a company's pace with the first.
     //
-    // Declared whether or not the internal edge is configured, unlike the scan lane above.
-    // A search cannot do anything without spending a grant, so a worker that cannot reach
-    // the edge would take a leg and record every company as unreachable. A demand has no
-    // grant to spend — there is no release scoped to an attempt yet — so what this handler
-    // can do does not depend on the edge at all.
-    lanes.Handle<RemovalJobWork, RemovalJobWorkHandler>();
+    // Behind the same condition as the scan lane, now that an attempt carries a grant. A
+    // worker that cannot reach the edge cannot open the identity a demand is made on behalf
+    // of, so it would take an attempt out of the queue and record every company as
+    // unreachable. No consumer means the work waits until a worker that can reach the edge
+    // drains it, which is the difference between a demand that is queued and one that has
+    // been answered wrongly.
+    if (internalApi.Enabled)
+    {
+        lanes.Handle<RemovalJobWork, RemovalJobWorkHandler>();
+    }
 });
 
 // Finding the runs nobody has started, and turning each into one piece of work per
