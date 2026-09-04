@@ -26,6 +26,7 @@ builder.Services.AddDbrSignup(builder.Configuration);
 builder.Services.AddDbrConsent(builder.Configuration);
 builder.Services.AddDbrCatalog();
 builder.Services.AddDbrMonitoring();
+builder.Services.AddDbrRemovals(builder.Configuration);
 
 // Here and not in the worker, which is the whole point of it. This process holds the
 // vault connection and the key-manager token, so it is the one that can turn a grant into
@@ -81,6 +82,7 @@ app.MapConsentEndpoints();
 app.MapCatalogEndpoints();
 app.MapScanEndpoints();
 app.MapExposureEndpoints();
+app.MapRemovalEndpoints();
 
 app.Run();
 
