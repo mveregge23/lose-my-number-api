@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Connectors;
+
 namespace Dbr.Domain.Removals;
 
 /// <summary>
@@ -86,6 +88,38 @@ public static class RemovalVocabulary
         "running" => RemovalJobStatus.Running,
         "succeeded" => RemovalJobStatus.Succeeded,
         "failed" => RemovalJobStatus.Failed,
+        _ => null,
+    };
+
+    /// <summary>
+    /// How a connector's account of a failure is spelled on an attempt.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than beside the connector contract, because this is a storage spelling
+    /// and the contract has none — nothing in that namespace knows there is a column. The
+    /// same arrangement every other vocabulary in this codebase describes.
+    /// </remarks>
+    public static string ToWire(ConnectorFailureReason reason) => reason switch
+    {
+        ConnectorFailureReason.Transient => "transient",
+        ConnectorFailureReason.RateLimited => "rate_limited",
+        ConnectorFailureReason.BrokerFormChanged => "broker_form_changed",
+        ConnectorFailureReason.Rejected => "rejected",
+        ConnectorFailureReason.Unsupported => "unsupported",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(reason),
+            reason,
+            "Unmapped connector failure. Adding one means a migration widening the check "
+            + "constraint on removal_job.failure_reason as well."),
+    };
+
+    public static ConnectorFailureReason? ParseFailureReason(string? value) => value switch
+    {
+        "transient" => ConnectorFailureReason.Transient,
+        "rate_limited" => ConnectorFailureReason.RateLimited,
+        "broker_form_changed" => ConnectorFailureReason.BrokerFormChanged,
+        "rejected" => ConnectorFailureReason.Rejected,
+        "unsupported" => ConnectorFailureReason.Unsupported,
         _ => null,
     };
 }

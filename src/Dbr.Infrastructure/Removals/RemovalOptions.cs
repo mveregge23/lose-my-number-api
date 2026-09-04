@@ -30,9 +30,32 @@ public sealed class RemovalOptions
     /// </remarks>
     public int MaxAttempts { get; set; } = 3;
 
+    /// <summary>
+    /// How long after a failed attempt the next one becomes due.
+    /// </summary>
+    /// <remarks>
+    /// A flat wait rather than a growing one, and that is a deliberate simplification worth
+    /// naming. The usual argument for backoff is to stop a client hammering a server it is
+    /// already struggling to reach — and here that job belongs to the company's lane, which
+    /// paces every attempt against it regardless of how many have failed. What this wait is
+    /// actually for is narrower: to stop a demand that failed for a reason time might fix
+    /// being retried in the same second. Growing it would spread retries out per demand
+    /// while the lane goes on admitting the same number per minute, which changes who waits
+    /// rather than how hard the company is pushed.
+    /// </remarks>
+    public int RetryBackoffSeconds { get; set; } = 900;
+
     /// <exception cref="InvalidOperationException">The settings cannot be used as given.</exception>
     public void Validate()
     {
+        if (RetryBackoffSeconds < 1)
+        {
+            throw new InvalidOperationException(
+                $"{SectionName}:RetryBackoffSeconds must be at least 1, and is "
+                + $"{RetryBackoffSeconds}. A demand retried in the same instant it failed is "
+                + "one that spends its whole budget before anything has had time to change.");
+        }
+
         if (MaxAttempts < 1)
         {
             throw new InvalidOperationException(

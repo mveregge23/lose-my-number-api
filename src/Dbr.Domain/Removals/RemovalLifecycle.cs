@@ -79,6 +79,15 @@ public static class RemovalLifecycle
         new(RemovalRequestStatus.Submitted, RemovalRequestStatus.RequiresHumanInput,
             "the connector reached a step no script completes", RemovalGuard.None),
 
+        // §5's diagram has no edge here and §9.2 requires one: it says a connector that
+        // looked and found nothing to remove maps to Removed, the same as one that acted.
+        // Without this the two answers a connector can give about a finished demand have
+        // only one state between them, and the honest one is unreachable. Waiting for a
+        // verification scan instead would be waiting on a company that was never asked
+        // anything, which is a deadline running against nobody.
+        new(RemovalRequestStatus.Submitted, RemovalRequestStatus.Removed,
+            "the connector found nothing left to remove", RemovalGuard.None),
+
         new(RemovalRequestStatus.Submitted, RemovalRequestStatus.Failed,
             "the submission itself failed", RemovalGuard.None),
 
