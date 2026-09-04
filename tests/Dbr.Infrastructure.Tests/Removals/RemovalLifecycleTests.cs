@@ -17,7 +17,8 @@ namespace Dbr.Infrastructure.Tests.Removals;
 public class RemovalLifecycleTests
 {
     /// <summary>
-    /// §5's diagram, plus the cancel route §6.5 requires, written out independently.
+    /// §5's diagram, plus the cancel route §6.5 requires and the edge §9.2 does, written
+    /// out independently.
     /// </summary>
     /// <remarks>
     /// Deliberately a second copy rather than something derived from
@@ -32,6 +33,13 @@ public class RemovalLifecycleTests
         (RemovalRequestStatus.Submitted, RemovalRequestStatus.RequiresHumanInput),
         (RemovalRequestStatus.Submitted, RemovalRequestStatus.Failed),
         (RemovalRequestStatus.Submitted, RemovalRequestStatus.Cancelled),
+
+        // §9.2's, not §5's. A connector that looked and found nothing to remove reports a
+        // finished demand, and there is nothing for a verification scan to confirm — the
+        // company was never asked anything, so waiting would be a deadline running against
+        // nobody. This pair used to be one of the plausible-sounding illegal ones and is
+        // now the one case where it is right.
+        (RemovalRequestStatus.Submitted, RemovalRequestStatus.Removed),
         (RemovalRequestStatus.RequiresHumanInput, RemovalRequestStatus.AwaitingBrokerResponse),
         (RemovalRequestStatus.AwaitingBrokerResponse, RemovalRequestStatus.Removed),
         (RemovalRequestStatus.AwaitingBrokerResponse, RemovalRequestStatus.Failed),
@@ -65,9 +73,9 @@ public class RemovalLifecycleTests
         RemovalRequestStatus from,
         RemovalRequestStatus to)
     {
-        // Eighty-one pairs, thirteen of them legal. The ones worth catching are the
+        // Eighty-one pairs, fourteen of them legal. The ones worth catching are the
         // plausible-sounding illegal ones — removed straight back to queued, cancelled
-        // reopened, submitted marked removed without anything having verified it.
+        // reopened, a demand awaiting an answer marked cancelled after the company has it.
         var expected = Expected.Contains((from, to));
 
         Assert.Equal(expected, RemovalLifecycle.IsAllowed(from, to));

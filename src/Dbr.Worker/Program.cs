@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Monitoring;
+using Dbr.Domain.Removals;
 using Dbr.Infrastructure.DependencyInjection;
 using Dbr.Infrastructure.InternalEdge;
 using Dbr.Infrastructure.Monitoring;
+using Dbr.Infrastructure.Removals;
 using Dbr.Worker;
 using Quartz;
 
@@ -45,6 +47,16 @@ builder.Services.AddDbrMessaging(builder.Configuration, lanes =>
     {
         lanes.Handle<ScanBrokerWork, ScanBrokerWorkHandler>();
     }
+
+    // Telling a company to stop holding somebody's data, which is the other kind of work
+    // these lanes were built for and the one that shares a company's pace with the first.
+    //
+    // Declared whether or not the internal edge is configured, unlike the scan lane above.
+    // A search cannot do anything without spending a grant, so a worker that cannot reach
+    // the edge would take a leg and record every company as unreachable. A demand has no
+    // grant to spend — there is no release scoped to an attempt yet — so what this handler
+    // can do does not depend on the edge at all.
+    lanes.Handle<RemovalJobWork, RemovalJobWorkHandler>();
 });
 
 // Finding the runs nobody has started, and turning each into one piece of work per
@@ -52,6 +64,12 @@ builder.Services.AddDbrMessaging(builder.Configuration, lanes =>
 // random bytes against the core store, so this process can plan a scan without ever
 // acquiring the ability to open one.
 builder.Services.AddDbrScanDispatch(builder.Configuration);
+
+// And finding the demands nobody has sent, turning each into one piece of work for one
+// company. The same deliberate absence: claiming a demand and writing an attempt are core
+// store, so this process can send a demand without being able to open the identity it is
+// made on behalf of.
+builder.Services.AddDbrRemovalDispatch(builder.Configuration);
 
 // Deliberately no key management here. This process drives browsers against
 // third-party sites, so a credential that can decrypt would be a standing decryption
@@ -77,6 +95,17 @@ dispatch.Validate();
 if (dispatch.Enabled)
 {
     builder.Services.AddHostedService<ScanDispatchService>();
+}
+
+// The same arrangement for demands, and its own switch: an operator who needs to stop
+// sending demands while leaving scanning alone should not have to stop the process.
+var removalDispatch = new RemovalDispatchOptions();
+builder.Configuration.GetSection(RemovalDispatchOptions.SectionName).Bind(removalDispatch);
+removalDispatch.Validate();
+
+if (removalDispatch.Enabled)
+{
+    builder.Services.AddHostedService<RemovalDispatchService>();
 }
 
 var schedule = new ScanScheduleOptions();

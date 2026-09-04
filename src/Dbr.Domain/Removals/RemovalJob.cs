@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Connectors;
 using Dbr.Domain.Tenancy;
 
 namespace Dbr.Domain.Removals;
@@ -64,4 +65,28 @@ public class RemovalJob : ITenantScoped
     /// be retried on the same schedule.
     /// </remarks>
     public DateTimeOffset? NextRetryAt { get; set; }
+
+    /// <summary>
+    /// Why this attempt did not complete, or <see langword="null"/> when it ran.
+    /// </summary>
+    /// <remarks>
+    /// The connector's own vocabulary, kept rather than collapsed into the status, because
+    /// it is what decides whether trying again is worth anything: a timeout and a company
+    /// declining the demand are both failures and only one of them is worth repeating.
+    /// Without it this row records that an attempt failed and cannot say how, which is the
+    /// same information a counter carries — and telling those apart is the reason these are
+    /// separate rows in the first place.
+    /// </remarks>
+    public ConnectorFailureReason? FailureReason { get; set; }
+
+    /// <summary>
+    /// What happened, for whoever reads the row.
+    /// </summary>
+    /// <remarks>
+    /// Never the identity the demand was made for and never the page's content — a status
+    /// line, a selector that did not match, the name of a timeout that expired. Bounded by
+    /// the column, so a connector that tries to put a page in here is truncated by the
+    /// database rather than trusted.
+    /// </remarks>
+    public string? Detail { get; set; }
 }
