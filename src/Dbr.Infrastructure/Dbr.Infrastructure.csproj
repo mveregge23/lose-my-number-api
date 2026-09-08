@@ -93,6 +93,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          that do. If that reference ever needs to run the other way, the thing reading
          hostile markup has grown a reach it should not have. -->
     <ProjectReference Include="..\Dbr.Search\Dbr.Search.csproj" />
+
+    <!-- And the same direction for the engine that composes a demand: it holds a template,
+         an address and the identity it was handed, and this is what gives it a relay to send
+         through. A reference the other way would put a database and a transport within reach
+         of the code that writes somebody's name into a message. -->
+    <ProjectReference Include="..\Dbr.Removals\Dbr.Removals.csproj" />
   </ItemGroup>
 
   <ItemGroup>

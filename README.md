@@ -557,6 +557,42 @@ keeps the row checkable against the citation printed beside it, and leaves the c
 code that computes an actual date — the only place that knows when the clock started and can skip
 weekends and public holidays properly. `deadline_unit` governs `extension_days` too.
 
+### What a demand says, and where the words live
+
+The sentences a demand is made in are catalog content, not code — the same rule that keeps
+deadlines out of C#, applied to the part a company actually reads. They sit in
+[`catalog/legal-basis/templates/`](catalog/legal-basis/templates/), one file per act and right,
+under the path `.github/CODEOWNERS` holds to two approvals.
+
+```
+catalog/legal-basis/templates/us-ca-ccpa.delete.yaml    -> what a CCPA deletion demand says
+catalog/legal-basis/templates/courtesy.delete.yaml      -> what a request citing no statute says
+catalog/brokers/<company>/email.yaml                    -> which mailbox that company takes it at
+```
+
+The split is deliberate. What a demand says depends on the law being invoked; where it goes depends
+on the company. Every company gets the same sentences under the same act, and a contributor adding a
+company writes one line — the local part of its opt-out mailbox — rather than a paragraph of legal
+prose nobody would review as such.
+
+A recipe writes `privacy`, never `privacy@example.com`. The domain comes from the company's catalog
+row, so a change to a reviewed document can never send somebody's name and home address to a
+different company. The reader refuses a whole address, and refuses a second recipient hidden behind
+a comma or angle brackets.
+
+**The placeholders are the declaration.** Whichever of them a template writes are the parts of an
+identity that demand causes to be decrypted, worked out from the document before anything runs.
+Nothing in the shipped wording mentions a date of birth, so a demand made with it cannot cause one
+to be released — not because nothing asks at the wrong moment, but because there is no moment at
+which it could. There is a test asserting exactly that against the files that ship.
+
+**Missing wording is a refusal, not a fallback.** A demand under an act with no reviewed template
+fails as unsupported and nothing is sent. Sending the nearest wording instead would claim an
+obligation in somebody's name that nothing established, and a company that checked would be right to
+refuse it. Today that means CCPA deletion, CCPA opt-out-of-sale, and a courtesy deletion request are
+worded; demands under Connecticut, Colorado, Utah and Virginia law are recognised, given the right
+deadline, and cannot yet be sent by mail.
+
 ## Asking for a scan
 
 A scan is one run of "ask these brokers what they hold about this identity". You ask for one with:

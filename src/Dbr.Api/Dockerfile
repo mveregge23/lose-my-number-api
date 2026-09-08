@@ -9,7 +9,12 @@ WORKDIR /src
 # Restore against the project graph alone first, so a source-only edit doesn't
 # invalidate the restore layer.
 COPY Directory.Build.props ./
+# Every project the entrypoint reaches, not just the ones it names. A csproj missing here
+# fails at restore with an assets-file error naming the project rather than the copy that
+# should have brought it, which is a long way from the line that needs changing.
 COPY src/Dbr.Domain/Dbr.Domain.csproj          src/Dbr.Domain/
+COPY src/Dbr.Search/Dbr.Search.csproj          src/Dbr.Search/
+COPY src/Dbr.Removals/Dbr.Removals.csproj      src/Dbr.Removals/
 COPY src/Dbr.Infrastructure/Dbr.Infrastructure.csproj src/Dbr.Infrastructure/
 COPY src/Dbr.Api/Dbr.Api.csproj                src/Dbr.Api/
 RUN dotnet restore src/Dbr.Api/Dbr.Api.csproj

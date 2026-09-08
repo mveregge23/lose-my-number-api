@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Where the reference company takes an opt-out. The worked example, beside the search recipe
+# that finds a listing in the first place.
+#
+# There is very little here on purpose. What a demand says is a property of the law being
+# invoked rather than of the company being asked, so it lives under catalog/legal-basis/ and
+# is reviewed at that higher bar — every company gets the same sentences, and what changes
+# between them is only where they are sent.
+#
+# There is nowhere to put a domain, for the same reason there is nowhere to put a host in
+# search.yaml: the mailbox below is a local part, and the domain comes from the company's
+# catalog row. A document that could write a whole address could send somebody's name and
+# home address to any mailbox on the internet, and it would arrive for review looking like a
+# changed string.
+
+brokerId: 2f6b1c48-9d3a-4e57-b8a1-0c5e7f9d24b3
+description: >
+  The reference people-search site. Takes opt-outs at a mailbox and offers no form, which is
+  what makes it the worked example for the templated-email connector.
+
+# The 'privacy' in 'privacy@example.com'.
+mailbox: privacy

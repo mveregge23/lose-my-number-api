@@ -3,6 +3,7 @@
 
 using AngleSharp.Css.Parser;
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Recipes;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;

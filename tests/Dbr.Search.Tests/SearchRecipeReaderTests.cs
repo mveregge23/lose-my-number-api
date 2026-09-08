@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Recipes;
 
 namespace Dbr.Search.Tests;
 
@@ -97,7 +98,7 @@ public class SearchRecipeReaderTests
         Assert.Empty(problems);
         Assert.NotNull(recipe);
 
-        var rendered = recipe.Query.Render(
+        var rendered = recipe.Query.RenderQuery(
             new ProfileIdentityFields(["Alex Whitfield"], [], [], null));
 
         Assert.NotNull(rendered.Value);

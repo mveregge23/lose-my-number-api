@@ -97,6 +97,12 @@ builder.Services.AddDbrInternalApiClient(builder.Configuration);
 // and opened an identity to learn something a setting could have said first.
 builder.Services.AddDbrMail(builder.Configuration);
 
+// And what to write. The mailboxes and the wording are read here, so a document that cannot
+// be used stops this process rather than one attempt: a company being sent something built
+// out of malformed wording is worse than a worker that refuses to start, and a build that
+// quietly asks fewer companies than its catalog claims is worse than both.
+builder.Services.AddDbrEmailConnectors();
+
 builder.Services.AddHostedService<Worker>();
 
 // On unless a deployment turns it off. A scan somebody asked for and that nothing ever

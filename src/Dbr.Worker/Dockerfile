@@ -6,12 +6,23 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY Directory.Build.props ./
+# Every project the entrypoint reaches, not just the ones it names. A csproj missing here
+# fails at restore with an assets-file error naming the project rather than the copy that
+# should have brought it, which is a long way from the line that needs changing.
 COPY src/Dbr.Domain/Dbr.Domain.csproj          src/Dbr.Domain/
+COPY src/Dbr.Search/Dbr.Search.csproj          src/Dbr.Search/
+COPY src/Dbr.Removals/Dbr.Removals.csproj      src/Dbr.Removals/
 COPY src/Dbr.Infrastructure/Dbr.Infrastructure.csproj src/Dbr.Infrastructure/
 COPY src/Dbr.Worker/Dbr.Worker.csproj          src/Dbr.Worker/
 RUN dotnet restore src/Dbr.Worker/Dbr.Worker.csproj
 
 COPY src/ src/
+# The reviewed content, which the search and removal projects pull into their output with
+# <None> globs pointed at this directory. Without it both build clean and ship empty — a
+# worker that starts, reports it can search and ask nobody, and is wrong in the one way
+# nothing in the stack would notice.
+COPY catalog/ catalog/
+
 RUN dotnet publish src/Dbr.Worker/Dbr.Worker.csproj -c Release -o /app --no-restore
 
 # The worker holds no listening port; the runtime-deps-free aspnet image is still
