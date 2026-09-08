@@ -58,6 +58,22 @@ public sealed class StubBrokerConnector(
                 new HashSet<IdentityField> { IdentityField.Names }),
             _ => new ConnectorResult.AlreadyClear());
 
+    /// <summary>
+    /// A connector that declares it needs no part of an identity.
+    /// </summary>
+    /// <remarks>
+    /// The contract refuses one of these when it is handed a context, but the dispatcher
+    /// mints before any context exists — so this is what reaches the release path and is
+    /// turned away there.
+    /// </remarks>
+    public static StubBrokerConnector NeedingNothing() =>
+        new(
+            new ConnectorCapabilities(
+                ConnectorKind.Recipe,
+                RemovalMethod.Email,
+                new HashSet<IdentityField>()),
+            _ => new ConnectorResult.AlreadyClear());
+
     /// <summary>A connector that throws rather than answering.</summary>
     public static StubBrokerConnector Throwing() =>
         Answering(_ => throw new InvalidOperationException("the connector is broken"));

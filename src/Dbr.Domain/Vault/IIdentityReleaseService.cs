@@ -39,6 +39,30 @@ public enum MintReleaseOutcome
     /// </remarks>
     BrokerNotInScan,
 
+    /// <summary>No such attempt for this tenant.</summary>
+    /// <remarks>
+    /// One outcome for "no such attempt" and "somebody else's attempt", as everywhere else.
+    /// </remarks>
+    JobNotFound,
+
+    /// <summary>The attempt is not one anything should still be acting on.</summary>
+    /// <remarks>
+    /// An attempt that already ran, or whose demand was cancelled while it waited in a
+    /// company's lane. The mirror of <see cref="ScanNotRunnable"/>, and it matters more:
+    /// work arriving late on the scan side reads a page nobody sees, while here it would
+    /// open somebody's identity in order to send a demand they withdrew.
+    /// </remarks>
+    JobNotRunnable,
+
+    /// <summary>The company is not the one this attempt is addressed to.</summary>
+    /// <remarks>
+    /// A demand names exactly one company, so there is no narrowing to check against the
+    /// way a scan has — either the attempt is for this broker or the caller has confused
+    /// two pieces of work, and minting anyway would decrypt an identity for a company the
+    /// person never asked to be contacted.
+    /// </remarks>
+    BrokerNotForThisJob,
+
     /// <summary>Nothing was asked for.</summary>
     /// <remarks>
     /// A grant covering no fields would decrypt nothing and still be a row somebody has
@@ -98,10 +122,15 @@ public sealed record MintReleaseResult(MintReleaseOutcome Outcome, MintedRelease
 /// scoped release means: not a whole identity with parts blanked, but the parts that were
 /// asked for and nothing decrypted beyond them.
 /// </param>
-/// <param name="ScanId">The run the grant was minted for.</param>
-/// <param name="BrokerId">The company the leg is addressed to.</param>
+/// <param name="ScanId">
+/// The run the grant was minted for, or <see langword="null"/> when it was minted for an
+/// attempt at a removal. Exactly one of this and <paramref name="RemovalJobId"/> is set.
+/// </param>
+/// <param name="RemovalJobId">The attempt the grant was minted for, or null for a scan leg's.</param>
+/// <param name="BrokerId">The company the work is addressed to.</param>
 public sealed record RedeemedRelease(
-    Guid ScanId,
+    Guid? ScanId,
+    Guid? RemovalJobId,
     Guid BrokerId,
     IReadOnlyList<IdentityField> Fields,
     ProfileIdentityFields Identity);
@@ -151,6 +180,27 @@ public interface IIdentityReleaseMinter
     /// </param>
     Task<MintReleaseResult> MintAsync(
         Guid scanId,
+        Guid brokerId,
+        IReadOnlyCollection<IdentityField> fields,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Mints a grant for one attempt at one removal.
+    /// </summary>
+    /// <remarks>
+    /// Its own method rather than a nullable pair on the one above, so that a caller cannot
+    /// ask for a grant naming neither piece of work or both. The two take different
+    /// arguments because they check different things: a scan leg is checked against the
+    /// companies the run was narrowed to, and an attempt against the single company its
+    /// demand names.
+    /// </remarks>
+    /// <param name="fields">
+    /// What the connector declared it needs. The grant covers these and redeeming it
+    /// decrypts nothing else — a field absent here has no path out of the vault for this
+    /// attempt.
+    /// </param>
+    Task<MintReleaseResult> MintForJobAsync(
+        Guid removalJobId,
         Guid brokerId,
         IReadOnlyCollection<IdentityField> fields,
         CancellationToken cancellationToken);

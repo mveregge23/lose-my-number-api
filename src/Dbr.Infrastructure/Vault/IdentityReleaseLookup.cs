@@ -17,7 +17,13 @@ namespace Dbr.Infrastructure.Vault;
 public sealed record StoredIdentityRelease(
     Guid Id,
     Guid TenantId,
-    Guid ScanId,
+
+    /// <summary>The run, or null when this grant is for an attempt at a removal.</summary>
+    Guid? ScanId,
+
+    /// <summary>The attempt, or null when this grant is for a leg of a scan.</summary>
+    Guid? RemovalJobId,
+
     Guid BrokerId,
     Guid PrivacyProfileId,
     IReadOnlyList<IdentityField> Fields,
@@ -56,7 +62,7 @@ public sealed class IdentityReleaseLookup(DbrDbContext context)
 {
     public Task<StoredIdentityRelease?> FindAsync(byte[] tokenHash, CancellationToken cancellationToken) =>
         context.ExecuteCommandAsync(
-            "SELECT id, tenant_id, scan_id, broker_id, privacy_profile_id, fields, "
+            "SELECT id, tenant_id, scan_id, removal_job_id, broker_id, privacy_profile_id, fields, "
             + "expires_at, redeemed_at, reported_at FROM app.find_identity_release(@token_hash)",
             async (command, token) =>
             {
@@ -69,20 +75,29 @@ public sealed class IdentityReleaseLookup(DbrDbContext context)
                     return null;
                 }
 
+                // Exactly one of the two work columns is set, which the table checks. Read
+                // as nullable on both sides rather than picking one and trusting the other
+                // to be absent, so a row that somehow broke that rule arrives as what it
+                // is instead of throwing here.
                 return new StoredIdentityRelease(
                     reader.GetGuid(0),
                     reader.GetGuid(1),
-                    reader.GetGuid(2),
-                    reader.GetGuid(3),
-                    reader.GetGuid(4),
-                    Fields(reader.GetFieldValue<string[]>(5)),
-                    reader.GetFieldValue<DateTimeOffset>(6),
-                    await reader.IsDBNullAsync(7, token).ConfigureAwait(false)
+                    await reader.IsDBNullAsync(2, token).ConfigureAwait(false)
                         ? null
-                        : reader.GetFieldValue<DateTimeOffset>(7),
+                        : reader.GetGuid(2),
+                    await reader.IsDBNullAsync(3, token).ConfigureAwait(false)
+                        ? null
+                        : reader.GetGuid(3),
+                    reader.GetGuid(4),
+                    reader.GetGuid(5),
+                    Fields(reader.GetFieldValue<string[]>(6)),
+                    reader.GetFieldValue<DateTimeOffset>(7),
                     await reader.IsDBNullAsync(8, token).ConfigureAwait(false)
                         ? null
-                        : reader.GetFieldValue<DateTimeOffset>(8));
+                        : reader.GetFieldValue<DateTimeOffset>(8),
+                    await reader.IsDBNullAsync(9, token).ConfigureAwait(false)
+                        ? null
+                        : reader.GetFieldValue<DateTimeOffset>(9));
             },
             cancellationToken);
 

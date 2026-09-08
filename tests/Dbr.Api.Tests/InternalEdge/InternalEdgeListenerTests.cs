@@ -298,10 +298,18 @@ public class InternalEdgeListenerTests : IAsyncLifetime
             CancellationToken cancellationToken) =>
             throw new NotSupportedException("The edge does not mint.");
 
+        public Task<MintReleaseResult> MintForJobAsync(
+            Guid removalJobId,
+            Guid brokerId,
+            IReadOnlyCollection<IdentityField> fields,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("The edge does not mint.");
+
         public Task<RedeemReleaseResult> RedeemAsync(string token, CancellationToken cancellationToken) =>
             Task.FromResult(token == GoodToken
                 ? RedeemReleaseResult.Granted(new RedeemedRelease(
                     Guid.NewGuid(),
+                    RemovalJobId: null,
                     Guid.NewGuid(),
                     [IdentityField.Names],
                     new ProfileIdentityFields(["Alex Whitfield"], [], [], null)))

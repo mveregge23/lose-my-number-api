@@ -166,6 +166,13 @@ public class InternalEdgeBranchOrderingTests : IAsyncLifetime
             CancellationToken cancellationToken) =>
             throw new NotSupportedException("The edge does not mint.");
 
+        public Task<MintReleaseResult> MintForJobAsync(
+            Guid removalJobId,
+            Guid brokerId,
+            IReadOnlyCollection<IdentityField> fields,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("The edge does not mint.");
+
         public Task<RedeemReleaseResult> RedeemAsync(string token, CancellationToken cancellationToken) =>
             Task.FromResult(RedeemReleaseResult.Refused());
     }

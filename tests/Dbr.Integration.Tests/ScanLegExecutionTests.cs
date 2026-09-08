@@ -670,6 +670,7 @@ public class ScanLegExecutionTests(PostgresFixture postgres, OpenBaoFixture open
 
         return new ReleaseResponse(
             release.ScanId,
+            release.RemovalJobId,
             release.BrokerId,
             [.. release.Fields.Select(IdentityVocabulary.ToWire)],
             release.Identity.Names,

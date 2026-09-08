@@ -63,6 +63,16 @@ public sealed class FindingReporter(
             return ReportFindingsResult.Refused();
         }
 
+        if (stored.ScanId is not { } scanId)
+        {
+            // A grant minted for an attempt at a removal, presented here. Findings belong to
+            // the run that found them, and a demand is not a run — there is no scan for the
+            // exposure to hang off, and inventing one would file a listing against a search
+            // that never happened. Refused like any other grant that cannot be spent this
+            // way, without saying which of the reasons it is.
+            return ReportFindingsResult.Refused();
+        }
+
         var now = clock.GetUtcNow();
 
         tenantContext.SetTenant(stored.TenantId);
@@ -114,7 +124,7 @@ public sealed class FindingReporter(
                 continue;
             }
 
-            await RecordAsync(stored, listing, confidence, now, cancellationToken)
+            await RecordAsync(stored, scanId, listing, confidence, now, cancellationToken)
                 .ConfigureAwait(false);
 
             recorded++;
@@ -128,6 +138,7 @@ public sealed class FindingReporter(
     /// <summary>One finding: its address in the vault, then the row that points at it.</summary>
     private async Task RecordAsync(
         StoredIdentityRelease grant,
+        Guid scanId,
         ReportedListing listing,
         double confidence,
         DateTimeOffset now,
@@ -165,7 +176,7 @@ public sealed class FindingReporter(
         {
             Id = exposureId,
             TenantId = grant.TenantId,
-            ScanId = grant.ScanId,
+            ScanId = scanId,
             PrivacyProfileId = grant.PrivacyProfileId,
             BrokerId = grant.BrokerId,
             Status = ExposureStatus.New,

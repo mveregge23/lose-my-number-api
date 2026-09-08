@@ -20,7 +20,8 @@ namespace Dbr.Api.InternalEdge;
 /// <b>Nothing here requires authorization, and that is not an omission.</b> Who may open a
 /// connection at all was settled during the TLS handshake, against a certificate this
 /// deployment issued; what this particular call may open is carried by the token in the
-/// body, which names one leg of one scan and is spent by being used. A bearer token would
+/// body, which names one piece of work — a leg of a scan or an attempt at a removal — and
+/// is spent by being used. A bearer token would
 /// be a third credential answering neither question.
 /// </para>
 /// </remarks>
@@ -73,6 +74,7 @@ public static class VaultReleaseEndpoints
     private static ReleaseResponse Released(RedeemedRelease release) =>
         new(
             release.ScanId,
+            release.RemovalJobId,
             release.BrokerId,
             [.. release.Fields.Select(IdentityVocabulary.ToWire)],
             release.Identity.Names,

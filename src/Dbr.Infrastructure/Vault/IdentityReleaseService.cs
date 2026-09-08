@@ -44,6 +44,13 @@ public sealed class IdentityReleaseService(
         CancellationToken cancellationToken) =>
         minter.MintAsync(scanId, brokerId, fields, cancellationToken);
 
+    public Task<MintReleaseResult> MintForJobAsync(
+        Guid removalJobId,
+        Guid brokerId,
+        IReadOnlyCollection<IdentityField> fields,
+        CancellationToken cancellationToken) =>
+        minter.MintForJobAsync(removalJobId, brokerId, fields, cancellationToken);
+
     public async Task<RedeemReleaseResult> RedeemAsync(string token, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
@@ -100,6 +107,11 @@ public sealed class IdentityReleaseService(
         }
 
         return RedeemReleaseResult.Granted(
-            new RedeemedRelease(stored.ScanId, stored.BrokerId, stored.Fields, identity));
+            new RedeemedRelease(
+                stored.ScanId,
+                stored.RemovalJobId,
+                stored.BrokerId,
+                stored.Fields,
+                identity));
     }
 }

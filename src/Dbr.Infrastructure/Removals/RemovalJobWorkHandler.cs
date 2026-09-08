@@ -6,6 +6,7 @@ using Dbr.Domain.Connectors;
 using Dbr.Domain.Messaging;
 using Dbr.Domain.Profiles;
 using Dbr.Domain.Removals;
+using Dbr.Infrastructure.InternalEdge;
 using Dbr.Infrastructure.Persistence;
 using Dbr.Infrastructure.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -34,20 +35,22 @@ namespace Dbr.Infrastructure.Removals;
 /// refusing a repeat delivery, and moving two rows in step.
 /// </para>
 /// <para>
-/// <b>There is no identity here, and that is the story's own finding rather than an
-/// oversight.</b> A connector needs one — it is filling in a form or composing a message
-/// naming a person — and there is no way to obtain one: the vault's scoped release is keyed
-/// to a scan by its schema and its definer function, and widening it to an attempt is its
-/// own story with its own audit-trail obligations. So a connector runs against an identity
-/// that released nothing, which the contract permits and which a real connector answers by
-/// saying it cannot work. That answer is recorded rather than special-cased, so the day the
-/// release exists the only thing that changes is what this hands over.
+/// <b>The identity exists here for the length of one attempt and is never written down.</b>
+/// It arrives decrypted from the process holding the keys, goes into the connector, and is
+/// gone. Nothing about it reaches a log line or the attempt row — which records a status, a
+/// reason and a sentence about what happened, none of it about a person.
+/// </para>
+/// <para>
+/// <b>The grant is spent as late as possible.</b> Everything above it can end the attempt
+/// without an identity being decrypted at all, and a grant burned before the attempt turned
+/// out to have no connector would be a decryption nothing used.
 /// </para>
 /// </remarks>
 public sealed class RemovalJobWorkHandler(
     DbrDbContext core,
     TenantContext tenantContext,
     IBrokerConnectorRegistry connectors,
+    IReleaseClient releases,
     IOptions<RemovalOptions> options,
     TimeProvider clock,
     ILogger<RemovalJobWorkHandler> logger)
@@ -175,18 +178,35 @@ public sealed class RemovalJobWorkHandler(
             return Unsupported("This company is no longer in the catalog.");
         }
 
+        var released = await releases.RedeemAsync(work.ReleaseToken, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (released is null)
+        {
+            // The grant would not open. It expired while the lane was busy, was already
+            // spent, or names an attempt that has since stopped. Not worth another go on
+            // this message — the token is single-use and a second presentation is refused
+            // for the same reason — so the demand goes back for a fresh attempt with a
+            // fresh grant.
+            return new RemovalProgress(
+                RemovalJobStatus.Failed,
+                RemovalRequestStatus.Failed,
+                ConnectorFailureReason.Transient,
+                RetryWorthwhile: true,
+                "The grant for this attempt would not open. It expired while the lane was "
+                + "busy, or was already spent.");
+        }
+
         var context = new ConnectorContext(
             work.RemovalJobId,
             work.RemovalRequestId,
             new ConnectorTarget(broker.Id, broker.Domain, broker.RemovalMethod),
             Demand(request),
+            Identity(released),
 
-            // Nothing was released, because nothing can be. See the note on this class.
-            ProfileIdentityFields.Empty,
-
-            // The listing is in the vault under its own key, so citing it needs the same
-            // release the identity does. A demand that cites nothing is an ordinary demand,
-            // which is what makes this absence survivable rather than blocking.
+            // The listing is in the vault under its own key, so citing it needs a release of
+            // its own that nothing mints yet. A demand that cites nothing is an ordinary
+            // demand, which is what makes this absence survivable rather than blocking.
             SourceRef: null,
 
             // No checkpoint. Nothing persists one until the resume path exists, so an
@@ -335,6 +355,45 @@ public sealed class RemovalJobWorkHandler(
             // that cites anything at all on a courtesy deadline.
             StatuteCode: null,
             StatuteCitation: null);
+
+    /// <summary>
+    /// The identity as the connector takes it, rebuilt from what crossed the edge.
+    /// </summary>
+    /// <remarks>
+    /// The profile's own type rather than a second one shaped like it, which is what the
+    /// connector context asks for and what refuses to print its own contents. A group the
+    /// grant did not cover arrives empty, and empty is the honest answer either way — a
+    /// group withheld and a group the profile has nothing in released the same nothing.
+    /// </remarks>
+    private static ProfileIdentityFields Identity(ReleaseResponse released) =>
+        new(
+            released.Names,
+            [.. released.Addresses.Select(Address)],
+            [.. released.Contacts.Select(Contact).OfType<ProfileContact>()],
+            released.DateOfBirth);
+
+    private static ProfileAddress Address(ReleasedAddress address) =>
+        new(
+            address.Id,
+            address.Line1,
+            address.Line2,
+            address.City,
+            address.Region,
+            address.PostalCode,
+            address.Country);
+
+    /// <summary>
+    /// One contact point, or nothing when its kind is not one this build knows.
+    /// </summary>
+    /// <remarks>
+    /// Dropped rather than guessed at. A contact whose kind this build cannot name is one a
+    /// connector could not use anyway, and inventing a kind for it would hand a connector a
+    /// phone number it believed was an email address.
+    /// </remarks>
+    private static ProfileContact? Contact(ReleasedContact contact) =>
+        Enum.TryParse<ProfileContactKind>(contact.Kind, ignoreCase: true, out var kind)
+            ? new ProfileContact(contact.Id, kind, contact.Value)
+            : null;
 
     private static RemovalProgress Unsupported(string detail) =>
         new(
