@@ -35,6 +35,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Working on the code without Docker](#working-on-the-code-without-docker)
 - [Deployment modes](#deployment-modes)
 - [Security: local defaults vs. a real deployment](#security-local-defaults-vs-a-real-deployment)
+- [Known gaps](#known-gaps)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 
@@ -960,20 +961,34 @@ A removal for a company that offers only an opt-out mailbox is sent as email, so
 mail server. `docker compose up` brings one up — [Postal](https://postalserver.io/), MIT-licensed —
 along with its own MariaDB, and points the worker at it.
 
-It is the heaviest thing in this stack by some margin, and it is here rather than a development
-mail sink for one reason: a sink would leave the sending path untested until the day it mattered.
-Postal is also the only candidate that serves both directions. A company's reply to a demand has to
-arrive somewhere, and Postal routes inbound mail to a webhook natively.
+### Why Postal, and not a development mail sink
+
+The obvious cheap option is a sink — Mailpit or MailHog — one small container that accepts
+everything and delivers nothing. It was rejected for two reasons.
+
+A sink leaves **the sending path untested until the day it matters**. Everything would pass locally
+and the first real send would be the first time the code met a mail server that could say no.
+
+And a sink closes only half the problem. A company's reply to a demand has to arrive *somewhere*,
+and be tied back to the job that provoked it. Postal routes inbound mail to a webhook natively,
+which is the mechanism the inbound story is written against. Picking a sink would have moved the
+hole from "nothing sends" to "nothing receives" rather than filling it.
+
+The cost is real: Postal is the heaviest thing in this stack by some margin — its own MariaDB, three
+processes, and a documented 4GB floor. That is the price of the relay being the real thing rather
+than a stand-in.
 
 ### What a laptop can and cannot do
 
 `docker compose up` gives you a relay that **accepts and queues** demands. It does not deliver them,
 and no compose file could: delivering mail needs a domain you control, DNS records that authorise
-this server to send for it, and outbound port 25 — which most home ISPs and cloud providers block by
-default.
+this server to send for it, and outbound port 25 — see
+[Port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds) below, which is the part
+that catches people out.
 
 So on a laptop the path is real up to the point of handover, and stops there. You can watch a demand
-being composed, authenticated, accepted and queued. You cannot watch it arrive.
+being composed, authenticated, accepted and queued. You cannot watch it arrive. This is the first
+entry in [Known gaps](#known-gaps), along with what it means for how a demand's status is recorded.
 
 To see the queue, publish the relay's interface and open it:
 
@@ -1009,13 +1024,52 @@ interface (SPF, DKIM, a return-path CNAME, and an MX if you want replies). Then 
 that domain and issue a real credential in the interface rather than using the one `postal-init`
 sets from `.env`.
 
-**Bring your own relay.** Point `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` at it
-and stop the `postal-*` services. Anything that speaks SMTP works.
+**Bring your own relay.** Set `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` in
+`.env` and stop the `postal-*` services. Anything that speaks SMTP works — including a hosted
+provider, with the caveat in [Port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds)
+about what that hands over.
 
 Either way, **turn `MAIL_REQUIRE_TLS` on**. It is off in the compose defaults because that hop is
 between two containers on a private network and the relay has no certificate for a hostname that
 resolves nowhere else. Anywhere the relay is reached across a network, leaving it off hands the
 credential and the body of every demand — somebody's name and address — to anything on the path.
+
+### Port 25, and why "just put it on a VM" is harder than it sounds
+
+This is the part that surprises people, so it is worth stating plainly before you plan a deployment
+around it.
+
+Handing a message *to* your own relay uses port 587 (submission), and nothing blocks that. Your
+relay then delivers to the recipient's mail server on **port 25**, server to server — and outbound
+25 is blocked nearly everywhere:
+
+| Where | Outbound port 25 |
+|---|---|
+| Google Cloud | **Blocked permanently.** No exception process. GCP documents this and points you at a third-party sending service |
+| AWS EC2 | Throttled by default; removable by request, tied to an Elastic IP with a reverse-DNS record |
+| Azure | Blocked on pay-as-you-go subscriptions; exceptions are limited and negotiated |
+| Home / office ISP | Almost always blocked, as standard anti-spam practice |
+
+Port 25 is only the first hurdle. A receiving server also checks that you are allowed to send for
+your domain: **SPF** listing your IP, **DKIM** signatures whose public key is published in your DNS
+(Postal generates the key and shows you the record), a **DMARC** policy, and a **PTR** record so your
+sending IP reverse-resolves to a name that forward-resolves back. Miss the PTR, or send from a
+residential range listed in Spamhaus's Policy Block List, and mail is refused before anyone reads it.
+
+So "run the relay on a VM you control" is accurate about *control* and misleading about *effort*.
+On GCP it does not work at all without a smarthost. On AWS or Azure it is a support request, a static
+IP, a reverse-DNS entry, and four DNS records before the first message is delivered.
+
+**The pragmatic alternative** is to stop delivering direct-to-MX and relay through a provider that
+already has the IP reputation and the DNS in order — either configure Postal's `POSTAL_SMTP_RELAYS`
+to hand off to one, or skip Postal entirely and point `MAIL_HOST` at it. Both work today, because
+the application only ever knows how to hand a message to an SMTP relay.
+
+Understand what that trades away, though. The reason the design bundles a self-hosted relay is that
+a third-party sending service would hold a standing copy of every demand this instance ever sends —
+which is somebody's name, home address and email, correlated with the companies holding their data.
+That is the same objection that keeps the queue and the key manager open source and self-hosted. A
+smarthost is a legitimate operational choice; it is not a neutral one.
 
 ### Postal runs under emulation on Apple Silicon
 
@@ -1366,6 +1420,63 @@ concerns can't be accidentally wired into a self-hosted build, and vice versa.
 model there is genuinely different from a multi-tenant instance holding many people's identity
 data, and this project doesn't pretend otherwise. What it does insist on is that the difference be
 explicit rather than assumed.
+
+## Known gaps
+
+Things that are deliberately not finished yet, collected in one place so nobody has to infer them
+from what the code does not do. Each is a real limitation of the current build, not a bug.
+
+### Demands are composed and queued, never delivered
+
+The whole path runs — a demand is opened, claimed, worded from reviewed content, addressed from the
+job it belongs to, and handed to the relay, which accepts it. Delivery is where it stops, and on a
+laptop it always will: it needs a domain you control, its DNS records, and outbound port 25. See
+[Port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds) for why that is harder than
+it sounds even on a cloud VM.
+
+Worth understanding rather than working around: **the application cannot tell the difference, by
+design.** Handing a message to a relay returns as soon as the relay accepts it, which is not a
+promise that anyone received it — so a demand is recorded as sent with its deadline running whether
+or not it ever arrives. That is true in production too. What actually closes the loop is a reply
+coming back, or the deadline expiring.
+
+### Nothing reads the replies
+
+A company's answer is addressed to `removals-{jobId}@…` and arrives at a mailbox no code reads yet.
+The relay that receives it is running; the webhook that would turn a reply into a confirmed removal
+is not built. Until it is, a removal never progresses past *submitted* on its own.
+
+### No verification scan, so nothing is ever confirmed gone
+
+The removal lifecycle stops at a demand sent with the clock running. Whether a listing actually
+disappeared — or reappeared months later — is answered by a verification scan, which does not exist.
+This is the deliberate boundary of the current milestone rather than an oversight.
+
+### The demand wording has not been reviewed by counsel
+
+Three templates ship: CCPA deletion, CCPA opt-out-of-sale, and a courtesy request citing no statute.
+They are written to be conservative and to claim nothing the catalog does not support, and they have
+not been read by a lawyer. Demands under the other four jurisdictions in the catalog are recognised
+and given correct deadlines, and **refuse to send rather than improvise wording**, which is the safe
+failure — but it does mean mail-based removals only work for California today.
+
+### The catalog has no real companies in it
+
+One reference fixture, used to exercise the engines. A live instance would search nobody and demand
+nothing however good the code is. Filling it is research rather than programming, and it is the
+single largest thing standing between this and a usable product.
+
+### Grants are recorded but nobody is told
+
+Every release of identity data writes a row saying what was issued, for which job, and when it was
+spent. There is no audit-log writer and no `/audit-log` route, so a tenant cannot yet read what was
+done with their data — a row somebody *could* read is not a trail somebody is *told* about.
+
+### Two smaller ones, documented where they live
+
+**No certificate revocation on the internal edge**, and **signup answers `409` for an address that
+already has an account.** Both are explained in
+[Security: local defaults vs. a real deployment](#security-local-defaults-vs-a-real-deployment).
 
 ## Troubleshooting
 

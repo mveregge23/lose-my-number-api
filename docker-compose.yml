@@ -421,12 +421,12 @@ services:
       # on. The domain is the half that has to be real: every demand carries a return
       # address on it, and a company replying to a domain nobody owns is a reply that
       # goes nowhere while the deadline runs.
-      Mail__Host: postal-smtp
+      Mail__Host: ${MAIL_HOST:-postal-smtp}
       # 25 because that is the port Postal's SMTP server listens on and this hop never
       # leaves the compose network. A relay reached across a network is a different
       # matter, and the setting defaults to 587 for it — submission, where an
       # authenticated client belongs and which fewer networks block outbound.
-      Mail__Port: 25
+      Mail__Port: ${MAIL_PORT:-25}
       Mail__Username: ${MAIL_USERNAME:-dbr}
       Mail__Password: ${MAIL_PASSWORD:-dbr_dev_smtp_credential}
       Mail__Domain: ${MAIL_DOMAIN:-removals.localhost.test}
