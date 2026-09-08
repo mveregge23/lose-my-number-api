@@ -29,6 +29,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Running a scan](#running-a-scan)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
+- [Sending a demand: outbound mail](#sending-a-demand-outbound-mail)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
 - [Logs, and what cannot get into them](#logs-and-what-cannot-get-into-them)
 - [Working on the code without Docker](#working-on-the-code-without-docker)
@@ -45,6 +46,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 |---|---|---|
 | Docker | 29.x + Compose v2 | Docker Desktop on macOS/Windows, or Docker Engine on Linux |
 | .NET SDK | 10.0 | Only needed to build/test outside containers |
+| Memory | 8GB to Docker | The mail relay alone documents a 4GB floor, and it runs alongside everything else |
 
 The integration test suite also needs Docker, since it starts its own throwaway Postgres and
 OpenBao containers — see [Working on the code without Docker](#working-on-the-code-without-docker).
@@ -96,8 +98,13 @@ laptop.
 | `pki-init` | `postgres:17` | One-shot: issues the development certificates for the internal edge, then exits |
 | `migrator` | built from `src/Dbr.Migrator` | One-shot: applies database migrations, then exits |
 | `catalog-sync` | built from `src/Dbr.CatalogSync` | One-shot: applies the curated catalog files, then exits |
+| `postal-smtp` | `ghcr.io/postalserver/postal:3.3.7` | The relay demands are handed to |
+| `postal-worker` | `ghcr.io/postalserver/postal:3.3.7` | Delivers what the relay accepted |
+| `postal-web` | `ghcr.io/postalserver/postal:3.3.7` | The relay's own interface — queues, deliveries, bounces |
+| `postal-mariadb` | `mariadb:11` | Postal's storage. Its own database, not this project's Postgres |
+| `postal-init` | `ghcr.io/postalserver/postal:3.3.7` | One-shot: issues Postal's signing key, schema and credentials, then exits |
 
-`pki-init`, `openbao-init`, `migrator` and `catalog-sync` exiting is normal and expected — they are one-shot jobs, not
+`pki-init`, `openbao-init`, `postal-init`, `migrator` and `catalog-sync` exiting is normal and expected — they are one-shot jobs, not
 services. `api` and `worker` wait for all three to finish *successfully* before they start, so a
 failed migration stops the stack instead of letting the application run against a schema it
 doesn't match — and a catalog that will not apply stops it instead of letting the application
@@ -911,6 +918,75 @@ access token already issued keeps working until it expires.
 There is no endpoint for this yet — it is a database change, made by whoever operates the
 instance.
 
+## Sending a demand: outbound mail
+
+A removal for a company that offers only an opt-out mailbox is sent as email, so the stack needs a
+mail server. `docker compose up` brings one up — [Postal](https://postalserver.io/), MIT-licensed —
+along with its own MariaDB, and points the worker at it.
+
+It is the heaviest thing in this stack by some margin, and it is here rather than a development
+mail sink for one reason: a sink would leave the sending path untested until the day it mattered.
+Postal is also the only candidate that serves both directions. A company's reply to a demand has to
+arrive somewhere, and Postal routes inbound mail to a webhook natively.
+
+### What a laptop can and cannot do
+
+`docker compose up` gives you a relay that **accepts and queues** demands. It does not deliver them,
+and no compose file could: delivering mail needs a domain you control, DNS records that authorise
+this server to send for it, and outbound port 25 — which most home ISPs and cloud providers block by
+default.
+
+So on a laptop the path is real up to the point of handover, and stops there. You can watch a demand
+being composed, authenticated, accepted and queued. You cannot watch it arrive.
+
+To see the queue, publish the relay's interface and open it:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml up
+```
+
+Then <http://localhost:5000>, with the credentials from `POSTAL_ADMIN_EMAIL` / `POSTAL_ADMIN_PASSWORD`
+(`admin@example.com` / `postal_dev_password` unless you changed them).
+
+### The address a reply comes back to
+
+Every demand is sent from `removals-{jobId}@$MAIL_DOMAIN` — the job's own address. That is what ties
+a company's reply back to the exact request it answers, and it is why `MAIL_DOMAIN` is the one mail
+setting with no default: a default would be a domain somebody else owns, and every reply this
+instance ever provoked would go there.
+
+It is a local part rather than the more obvious `removals+{jobId}@`. A `+` is visibly a subaddress:
+enough mail systems strip it and enough web-form validators reject it as disposable that the address
+would fail precisely where a removal has to work — silently, because a demand that never arrived and
+one that was ignored look identical from here while the statutory clock runs on both. The cost is
+that the domain is routed as a catch-all rather than as one named mailbox.
+
+The development default is `removals.localhost.test`, which is deliberately unroutable.
+
+### Pointing it at a real deployment
+
+Two options, and the seam is the same for both — the application only knows how to hand a message to
+an SMTP relay.
+
+**Keep Postal.** Give it a domain, publish its SMTP port, and add the DNS records it asks for in its
+interface (SPF, DKIM, a return-path CNAME, and an MX if you want replies). Then set `MAIL_DOMAIN` to
+that domain and issue a real credential in the interface rather than using the one `postal-init`
+sets from `.env`.
+
+**Bring your own relay.** Point `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` at it
+and stop the `postal-*` services. Anything that speaks SMTP works.
+
+Either way, **turn `MAIL_REQUIRE_TLS` on**. It is off in the compose defaults because that hop is
+between two containers on a private network and the relay has no certificate for a hostname that
+resolves nowhere else. Anywhere the relay is reached across a network, leaving it off hands the
+credential and the body of every demand — somebody's name and address — to anything on the path.
+
+### Postal runs under emulation on Apple Silicon
+
+Postal publishes an `amd64` image only, so `docker-compose.yml` pins `platform: linux/amd64` on its
+services. Docker Desktop runs them under emulation on an ARM Mac. It works; it is slow to start.
+Nothing else in the stack is affected.
+
 ## OpenBao, sealing, and the unseal key
 
 OpenBao encrypts its storage with a master key, which is itself protected by an **unseal key**. On
@@ -1224,6 +1300,11 @@ If you are only running this locally, you can stop reading here. If you are depl
 | Passkey relying party is `localhost` over plain HTTP | It is the only origin your browser will reach | Your real domain over HTTPS. Browsers refuse WebAuthn on any non-`localhost` origin without it, so this is enforced whether you set it or not |
 | Token signing key `dbr_dev_token_signing_key_...`, committed to the repo | Nobody else can reach the API to use it | A real secret. Whoever knows this key can mint an access token for any account, so it is the single most important value in this table |
 | Terms version `2026-06-01`, naming no document that exists | Nobody is agreeing to anything on your laptop | The version of terms you actually serve. Every account records this as what its owner accepted, and a version naming nothing makes that record worthless — the one row here that is not a secret and still has to change |
+| Mail credential `dbr_dev_smtp_credential`, committed to the repo | The relay is a container only your worker can reach | A credential issued in Postal's own interface. `postal-init` forces the committed one so the stack self-configures, which is exactly what a real deployment must not do |
+| `MAIL_REQUIRE_TLS=false` | The hop is between two containers on a private network, and the relay has no certificate for a name that resolves nowhere else | **On.** Off across a network hands the credential and the body of every demand — a real name and address — to anything on the path |
+| `MAIL_DOMAIN=removals.localhost.test` | Deliberately unroutable, so nothing escapes | A domain you control, with the DNS records that authorise this server to send for it. Every demand carries a return address on this domain |
+| Postal's admin `admin@example.com` / `postal_dev_password` | Its interface is off the host unless you add the dev-ports overlay | A real account. Whoever holds it can read every demand this instance has sent |
+| `postal-init` verifying the mail domain outright | DNS verification cannot pass for a domain nobody owns, and refusing to send would make the local stack unable to demonstrate anything | Verify the domain properly in Postal's interface. An unverified domain that Postal believes is verified will be rejected by the receiving world instead |
 | Consent policy version `2026-06-01`, naming no document either | Same reason | The version of the consent text you actually serve. Every grant and withdrawal records it, and it is what answers "what was this person shown" long after the wording moved on. A separate document from the terms, so it gets a separate version |
 
 One limitation of the internal edge is worth naming here rather than leaving to be found: **there

@@ -73,6 +73,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          it. -->
     <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <!-- SMTP, so the relay stays the operator's choice. MailKit rather than
+         System.Net.Mail.SmtpClient, which Microsoft documents as obsolete for new code and
+         which cannot do the one thing a submission relay requires: it has no way to demand
+         STARTTLS and fail when the server does not offer it, only to prefer it and continue
+         in the clear when it is absent. That is the difference between a setting that
+         protects the credential and one that describes an intention.
+
+         MIT, and it brings MimeKit transitively — deliberately not pinned separately, so
+         the message builder and the client that sends what it built can never skew. -->
+    <PackageReference Include="MailKit" Version="4.17.0" />
   </ItemGroup>
 
   <ItemGroup>

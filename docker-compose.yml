@@ -101,6 +101,129 @@ services:
       openbao:
         condition: service_healthy
 
+  # The relay demands are sent through. Postal, which is open source (MIT) and is the
+  # one candidate that serves both directions: it relays outbound mail, and it routes
+  # inbound mail to a webhook natively, which is what a company's reply to a demand
+  # has to arrive on.
+  #
+  # It is genuinely heavier than the rest of this stack — its own MariaDB, three
+  # processes, and a documented 4GB of RAM. That cost buys a relay an operator can
+  # actually deliver mail through once they point DNS at it, rather than a development
+  # sink that would leave the sending path untested until the day it mattered.
+  #
+  # What `docker compose up` cannot supply is a domain, its DNS records, and outbound
+  # port 25 — so on a laptop this accepts and queues demands rather than delivering
+  # them. See the mail section of the README for what a real deployment adds.
+  postal-mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: ${POSTAL_DB_PASSWORD:-postal_dev_password}
+      MARIADB_DATABASE: postal
+    volumes:
+      - postal-mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # One-shot: issues Postal's signing key, creates its schema, and reconciles the
+  # organisation, mail server and SMTP credential the worker sends with. Same shape as
+  # the migrator and openbao-init — everything that needs Postal waits for it to exit 0.
+  postal-init:
+    # Root, alone among the Postal services, and only so that it can write the signing
+    # key into a named volume Docker creates owned by root. It hands the directory back
+    # to Postal's own uid before it exits — see the note in postal/init.sh.
+    user: root
+    image: ghcr.io/postalserver/postal:3.3.7
+    # amd64 under emulation on an Apple Silicon machine, because Postal publishes no
+    # arm64 image. It costs startup time rather than correctness, and pinning it here is
+    # what keeps `docker compose up` from failing outright on the architecture half this
+    # project's contributors are likely to be developing on.
+    platform: linux/amd64
+    restart: "no"
+    entrypoint: ["/bin/bash", "/init.sh"]
+    environment: &postal-environment
+      POSTAL_SIGNING_KEY_PATH: /config/signing.key
+      MAIN_DB_HOST: postal-mariadb
+      MAIN_DB_USERNAME: root
+      MAIN_DB_PASSWORD: ${POSTAL_DB_PASSWORD:-postal_dev_password}
+      MESSAGE_DB_HOST: postal-mariadb
+      MESSAGE_DB_USERNAME: root
+      MESSAGE_DB_PASSWORD: ${POSTAL_DB_PASSWORD:-postal_dev_password}
+      POSTAL_WEB_HOSTNAME: ${POSTAL_WEB_HOSTNAME:-localhost:5000}
+      POSTAL_WEB_PROTOCOL: ${POSTAL_WEB_PROTOCOL:-http}
+      POSTAL_SMTP_HOSTNAME: ${MAIL_DOMAIN:-removals.localhost.test}
+      # Signs Postal's own cookies and sessions. Its own secret rather than the
+      # application's: they protect different things for different people, and one
+      # value would mean rotating either forced rotating both.
+      RAILS_SECRET_KEY: ${POSTAL_SECRET_KEY:-postal_dev_secret_key_do_not_use_in_production}
+      POSTAL_SMTP_KEY: ${MAIL_PASSWORD:-dbr_dev_smtp_credential}
+      POSTAL_MAIL_DOMAIN: ${MAIL_DOMAIN:-removals.localhost.test}
+      POSTAL_ADMIN_EMAIL: ${POSTAL_ADMIN_EMAIL:-admin@example.com}
+      POSTAL_ADMIN_PASSWORD: ${POSTAL_ADMIN_PASSWORD:-postal_dev_password}
+    volumes:
+      - ./postal/init.sh:/init.sh:ro
+      - postal-config:/config
+    depends_on:
+      postal-mariadb:
+        condition: service_healthy
+
+  # Accepts the demands the worker hands over. This is the only Postal process the
+  # application talks to; the web interface and the delivery worker below are for
+  # whoever operates the relay.
+  postal-smtp:
+    image: ghcr.io/postalserver/postal:3.3.7
+    # amd64 under emulation on an Apple Silicon machine, because Postal publishes no
+    # arm64 image. It costs startup time rather than correctness, and pinning it here is
+    # what keeps `docker compose up` from failing outright on the architecture half this
+    # project's contributors are likely to be developing on.
+    platform: linux/amd64
+    command: postal smtp-server
+    environment: *postal-environment
+    volumes:
+      - postal-config:/config
+    depends_on:
+      postal-init:
+        condition: service_completed_successfully
+
+  # Delivers what the SMTP server accepted. Without it, demands are queued and never
+  # leave — which is the failure that looks most like success from the application's
+  # side, since handing a message over is all the application ever sees.
+  postal-worker:
+    image: ghcr.io/postalserver/postal:3.3.7
+    # amd64 under emulation on an Apple Silicon machine, because Postal publishes no
+    # arm64 image. It costs startup time rather than correctness, and pinning it here is
+    # what keeps `docker compose up` from failing outright on the architecture half this
+    # project's contributors are likely to be developing on.
+    platform: linux/amd64
+    command: postal worker
+    environment: *postal-environment
+    volumes:
+      - postal-config:/config
+    depends_on:
+      postal-init:
+        condition: service_completed_successfully
+
+  # The relay's own interface: queues, delivery attempts, bounces, and the credentials
+  # a real deployment issues by hand. Off the host by default like every other backing
+  # service — reach it through the dev-ports overlay.
+  postal-web:
+    image: ghcr.io/postalserver/postal:3.3.7
+    # amd64 under emulation on an Apple Silicon machine, because Postal publishes no
+    # arm64 image. It costs startup time rather than correctness, and pinning it here is
+    # what keeps `docker compose up` from failing outright on the architecture half this
+    # project's contributors are likely to be developing on.
+    platform: linux/amd64
+    command: postal web-server
+    environment: *postal-environment
+    volumes:
+      - postal-config:/config
+    depends_on:
+      postal-init:
+        condition: service_completed_successfully
+
   # One-shot: issues a development certificate authority, a server certificate for the
   # API's internal listener, and a client certificate for the worker. Idempotent, and it
   # reissues when they are about to expire.
@@ -294,6 +417,24 @@ services:
       # company that has stopped answering should fail quickly rather than keep one open.
       Search__UserAgent: ${SEARCH_USER_AGENT:-LoseMyNumber/1.0 (+https://github.com/mveregge23/lose-my-number-api)}
       Search__TimeoutSeconds: ${SEARCH_TIMEOUT_SECONDS:-20}
+      # The relay demands are handed to, and the domain a company's answer comes back
+      # on. The domain is the half that has to be real: every demand carries a return
+      # address on it, and a company replying to a domain nobody owns is a reply that
+      # goes nowhere while the deadline runs.
+      Mail__Host: postal-smtp
+      # 25 because that is the port Postal's SMTP server listens on and this hop never
+      # leaves the compose network. A relay reached across a network is a different
+      # matter, and the setting defaults to 587 for it — submission, where an
+      # authenticated client belongs and which fewer networks block outbound.
+      Mail__Port: 25
+      Mail__Username: ${MAIL_USERNAME:-dbr}
+      Mail__Password: ${MAIL_PASSWORD:-dbr_dev_smtp_credential}
+      Mail__Domain: ${MAIL_DOMAIN:-removals.localhost.test}
+      # Off, because this hop is between two containers on a private network and the
+      # relay has no certificate for a hostname that resolves nowhere else. Anywhere
+      # the relay is reached across a network this must be on: without it the
+      # credential above and the body of every demand cross that network in the clear.
+      Mail__RequireTls: ${MAIL_REQUIRE_TLS:-false}
       # No key-manager credentials and no vault connection string, deliberately. Workers
       # talk to third-party broker sites, and either of those is a standing decryption
       # right — exactly what a compromised worker should not be able to hand over. When a
@@ -326,8 +467,15 @@ services:
         condition: service_completed_successfully
       catalog-sync:
         condition: service_completed_successfully
+      # The worker composes demands and hands them to the relay, so the relay's
+      # bootstrap has to have run — otherwise the first demand of a fresh stack fails
+      # against a credential that does not exist yet.
+      postal-init:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:
   rabbitmq-data:
   openbao-data:
+  postal-mariadb-data:
+  postal-config:
