@@ -1125,6 +1125,19 @@ a reply to the demand it answers will have to work by mail threading — a reply
 pointing at the `Message-Id` we already generate and record — rather than by the address it was sent
 to. Route 2 keeps the address-based option open; routes 1 and 3 commit to the threading one.
 
+**And the mailbox is per-deployment, not per-tenant.** `MAIL_*` is one set of settings for the whole
+instance, so if you run this for more than one account — a household with separate logins rather than
+one person managing several profiles — every account's replies arrive in the same inbox. A broker's
+reply usually quotes the demand it answers, which carries a name and a home address, so whoever reads
+that inbox reads other people's identity data. Row-level security and the vault both stop that
+happening inside the system; neither one reaches a mail account.
+
+Until that is fixed, **a shared mailbox is safe for one operator and not for several independent
+accounts.** If you are running this for other people, use route 2 so each demand goes out from an
+address on a domain you control, and keep the inbox as closed as the database. The intended fix is a
+connected mail account per privacy profile rather than one per deployment — see
+[Known gaps](#known-gaps).
+
 ### Postal runs under emulation on Apple Silicon
 
 Postal publishes an `amd64` image only, so `docker-compose.yml` pins `platform: linux/amd64` on its
@@ -1511,6 +1524,20 @@ is not built. Until it is, a removal never progresses past *submitted* on its ow
 The removal lifecycle stops at a demand sent with the clock running. Whether a listing actually
 disappeared — or reappeared months later — is answered by a verification scan, which does not exist.
 This is the deliberate boundary of the current milestone rather than an oversight.
+
+### One mailbox serves every tenant
+
+Outbound mail is configured once for the deployment, so a self-host running more than one independent
+account has all of their broker replies landing in a single inbox — and replies quote the demand they
+answer, name and address included. That is a cross-tenant read of exactly the data the vault exists to
+compartmentalise, arriving through a channel the vault does not cover.
+
+It is a real limit on multi-tenant self-hosting rather than a reason to give it up. The direction is a
+mail account connected **per privacy profile**: the tenant authorises their own account, demands go out
+from it, and replies arrive in a mailbox only they can read — which removes the shared inbox rather than
+warning people about it, and has the side effect that a tenant's own address is one they chose. It
+brings its own questions, chiefly where a per-tenant credential lives and how a worker that holds no
+standing decryption rights uses one. Those are worked through on the story rather than here.
 
 ### The demand wording has not been reviewed by counsel
 

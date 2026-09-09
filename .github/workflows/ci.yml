@@ -55,6 +55,33 @@ jobs:
       - name: Test
         run: dotnet test Dbr.slnx --no-build --configuration Release
 
+  images:
+    name: Container images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The one check that would have caught the api and worker images being
+      # unbuildable from source for four months. Nothing else notices: the solution
+      # builds, every test passes, and the Dockerfiles restore a different set of
+      # projects than the solution does — so a project reference added to
+      # Dbr.Infrastructure and not to the COPY list fails only here.
+      #
+      # It is also the only place that proves catalog/ reaches the image. A build
+      # missing it succeeds and ships a worker that starts, reports it can ask
+      # nobody, and is wrong in the way nothing else in this pipeline would see.
+      - name: Build every image the compose file defines
+        run: docker compose build
+
+      # Cheap and worth having beside it: a compose file that no longer parses, or
+      # names a service nothing defines, fails here rather than on somebody's clone.
+      - name: Validate the compose file and its dev-ports overlay
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml config --quiet
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

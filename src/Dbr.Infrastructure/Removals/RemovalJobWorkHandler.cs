@@ -197,11 +197,21 @@ public sealed class RemovalJobWorkHandler(
                 + "busy, or was already spent.");
         }
 
+        // The regime the request was opened under, read rather than decided. Which statute
+        // governs was settled when the demand was opened and written onto the row; this
+        // serves the code and the citation from it so the message can say what it is
+        // claiming and where to check it.
+        var basis = request.LegalBasisId is { } basisId
+            ? await core.Set<LegalBasis>()
+                .FirstOrDefaultAsync(row => row.Id == basisId, cancellationToken)
+                .ConfigureAwait(false)
+            : null;
+
         var context = new ConnectorContext(
             work.RemovalJobId,
             work.RemovalRequestId,
             new ConnectorTarget(broker.Id, broker.Domain, broker.RemovalMethod),
-            Demand(request),
+            Demand(request, basis),
             Identity(released),
 
             // The listing is in the vault under its own key, so citing it needs a release of
@@ -338,23 +348,31 @@ public sealed class RemovalJobWorkHandler(
 
     /// <summary>What is being demanded, as the connector needs it.</summary>
     /// <remarks>
-    /// The citation is not resolved from the catalog here, and the demand carries none as a
-    /// result. Reading the regime would mean this process holding an opinion about which
-    /// statute governs, which was settled when the request was opened and written onto the
-    /// row; serving the code and the URL from it is what the audit-trail story adds, since
-    /// that is the point at which what was actually asserted has to be recoverable.
+    /// <para>
+    /// <b>The citation travels with the deadline it justifies, and the two must agree.</b>
+    /// A demand whose deadline came from a statute and which names no statute is refused by
+    /// the contract before it runs — a company cannot check an obligation it has not been
+    /// told the name of — so serving one without the other is not a smaller demand, it is a
+    /// demand that never leaves.
+    /// </para>
+    /// <para>
+    /// Reading the regime here is not this process forming an opinion about which statute
+    /// governs. That was settled when the request was opened and written onto the row; this
+    /// reads back what was recorded, which is also what makes the claim recoverable
+    /// afterwards.
+    /// </para>
     /// </remarks>
-    private static ConnectorDemand Demand(RemovalRequest request) =>
+    private static ConnectorDemand Demand(RemovalRequest request, LegalBasis? basis) =>
         new(
             request.RequestType,
             request.DeadlineSource,
             request.DeadlineAt,
 
-            // Null for both, deliberately, and consistent with each other: the contract
-            // refuses a demand that names a statute without somewhere to read it, and one
-            // that cites anything at all on a courtesy deadline.
-            StatuteCode: null,
-            StatuteCitation: null);
+            // Both or neither, which is the pairing the contract holds a demand to: a
+            // courtesy deadline cites nothing, and a statutory one cites an act and gives
+            // somewhere to read it.
+            StatuteCode: basis?.Code,
+            StatuteCitation: basis is null ? null : new Uri(basis.CitationUrl, UriKind.Absolute));
 
     /// <summary>
     /// The identity as the connector takes it, rebuilt from what crossed the edge.
