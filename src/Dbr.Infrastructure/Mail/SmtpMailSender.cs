@@ -87,6 +87,24 @@ public sealed class SmtpMailSender : IMailSender
                 exception);
         }
         catch (Exception exception) when (
+            exception is NotSupportedException or SslHandshakeException)
+        {
+            // The relay cannot be talked to the way this instance is configured to talk to
+            // it — encryption was required and not offered, or the certificate did not
+            // stand up. Not transient, because another attempt reaches the same relay with
+            // the same settings, and it is a settings fault rather than a demand's: every
+            // company this instance writes to fails identically until somebody changes one
+            // of the two ends.
+            throw new MailDeliveryException(
+                "The relay could not be reached on the terms this instance requires: "
+                + exception.Message
+                + " Either the relay needs encryption enabled, or Mail:RequireTls has to be "
+                + "turned off — which is only safe when the relay is reached over a network "
+                + "nothing else is on.",
+                transient: false,
+                exception);
+        }
+        catch (Exception exception) when (
             exception is SmtpProtocolException
                 or AuthenticationException
                 or System.Net.Sockets.SocketException
