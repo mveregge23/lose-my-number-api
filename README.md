@@ -29,11 +29,13 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 - [Running a scan](#running-a-scan)
 - [Signing in: passkeys](#signing-in-passkeys)
 - [Sessions and tokens](#sessions-and-tokens)
+- [Sending a demand: outbound mail](#sending-a-demand-outbound-mail)
 - [OpenBao, sealing, and the unseal key](#openbao-sealing-and-the-unseal-key)
 - [Logs, and what cannot get into them](#logs-and-what-cannot-get-into-them)
 - [Working on the code without Docker](#working-on-the-code-without-docker)
 - [Deployment modes](#deployment-modes)
 - [Security: local defaults vs. a real deployment](#security-local-defaults-vs-a-real-deployment)
+- [Known gaps](#known-gaps)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 
@@ -45,6 +47,7 @@ same codebase, and the differences are spelled out in [Deployment modes](#deploy
 |---|---|---|
 | Docker | 29.x + Compose v2 | Docker Desktop on macOS/Windows, or Docker Engine on Linux |
 | .NET SDK | 10.0 | Only needed to build/test outside containers |
+| Memory | 8GB to Docker | The mail relay alone documents a 4GB floor, and it runs alongside everything else |
 
 The integration test suite also needs Docker, since it starts its own throwaway Postgres and
 OpenBao containers — see [Working on the code without Docker](#working-on-the-code-without-docker).
@@ -96,8 +99,13 @@ laptop.
 | `pki-init` | `postgres:17` | One-shot: issues the development certificates for the internal edge, then exits |
 | `migrator` | built from `src/Dbr.Migrator` | One-shot: applies database migrations, then exits |
 | `catalog-sync` | built from `src/Dbr.CatalogSync` | One-shot: applies the curated catalog files, then exits |
+| `postal-smtp` | `ghcr.io/postalserver/postal:3.3.7` | The relay demands are handed to |
+| `postal-worker` | `ghcr.io/postalserver/postal:3.3.7` | Delivers what the relay accepted |
+| `postal-web` | `ghcr.io/postalserver/postal:3.3.7` | The relay's own interface — queues, deliveries, bounces |
+| `postal-mariadb` | `mariadb:11` | Postal's storage. Its own database, not this project's Postgres |
+| `postal-init` | `ghcr.io/postalserver/postal:3.3.7` | One-shot: issues Postal's signing key, schema and credentials, then exits |
 
-`pki-init`, `openbao-init`, `migrator` and `catalog-sync` exiting is normal and expected — they are one-shot jobs, not
+`pki-init`, `openbao-init`, `postal-init`, `migrator` and `catalog-sync` exiting is normal and expected — they are one-shot jobs, not
 services. `api` and `worker` wait for all three to finish *successfully* before they start, so a
 failed migration stops the stack instead of letting the application run against a schema it
 doesn't match — and a catalog that will not apply stops it instead of letting the application
@@ -550,6 +558,42 @@ keeps the row checkable against the citation printed beside it, and leaves the c
 code that computes an actual date — the only place that knows when the clock started and can skip
 weekends and public holidays properly. `deadline_unit` governs `extension_days` too.
 
+### What a demand says, and where the words live
+
+The sentences a demand is made in are catalog content, not code — the same rule that keeps
+deadlines out of C#, applied to the part a company actually reads. They sit in
+[`catalog/legal-basis/templates/`](catalog/legal-basis/templates/), one file per act and right,
+under the path `.github/CODEOWNERS` holds to two approvals.
+
+```
+catalog/legal-basis/templates/us-ca-ccpa.delete.yaml    -> what a CCPA deletion demand says
+catalog/legal-basis/templates/courtesy.delete.yaml      -> what a request citing no statute says
+catalog/brokers/<company>/email.yaml                    -> which mailbox that company takes it at
+```
+
+The split is deliberate. What a demand says depends on the law being invoked; where it goes depends
+on the company. Every company gets the same sentences under the same act, and a contributor adding a
+company writes one line — the local part of its opt-out mailbox — rather than a paragraph of legal
+prose nobody would review as such.
+
+A recipe writes `privacy`, never `privacy@example.com`. The domain comes from the company's catalog
+row, so a change to a reviewed document can never send somebody's name and home address to a
+different company. The reader refuses a whole address, and refuses a second recipient hidden behind
+a comma or angle brackets.
+
+**The placeholders are the declaration.** Whichever of them a template writes are the parts of an
+identity that demand causes to be decrypted, worked out from the document before anything runs.
+Nothing in the shipped wording mentions a date of birth, so a demand made with it cannot cause one
+to be released — not because nothing asks at the wrong moment, but because there is no moment at
+which it could. There is a test asserting exactly that against the files that ship.
+
+**Missing wording is a refusal, not a fallback.** A demand under an act with no reviewed template
+fails as unsupported and nothing is sent. Sending the nearest wording instead would claim an
+obligation in somebody's name that nothing established, and a company that checked would be right to
+refuse it. Today that means CCPA deletion, CCPA opt-out-of-sale, and a courtesy deletion request are
+worded; demands under Connecticut, Colorado, Utah and Virginia law are recognised, given the right
+deadline, and cannot yet be sent by mail.
+
 ## Asking for a scan
 
 A scan is one run of "ask these brokers what they hold about this identity". You ask for one with:
@@ -911,6 +955,182 @@ access token already issued keeps working until it expires.
 There is no endpoint for this yet — it is a database change, made by whoever operates the
 instance.
 
+## Sending a demand: outbound mail
+
+A removal for a company that offers only an opt-out mailbox is sent as email, so the stack needs a
+mail server. `docker compose up` brings one up — [Postal](https://postalserver.io/), MIT-licensed —
+along with its own MariaDB, and points the worker at it.
+
+### Why Postal, and not a development mail sink
+
+The obvious cheap option is a sink — Mailpit or MailHog — one small container that accepts
+everything and delivers nothing. It was rejected for two reasons.
+
+A sink leaves **the sending path untested until the day it matters**. Everything would pass locally
+and the first real send would be the first time the code met a mail server that could say no.
+
+And a sink closes only half the problem. A company's reply to a demand has to arrive *somewhere*,
+and be tied back to the job that provoked it. Postal routes inbound mail to a webhook natively,
+which is the mechanism the inbound story is written against. Picking a sink would have moved the
+hole from "nothing sends" to "nothing receives" rather than filling it.
+
+The cost is real: Postal is the heaviest thing in this stack by some margin — its own MariaDB, three
+processes, and a documented 4GB floor. That is the price of the relay being the real thing rather
+than a stand-in.
+
+### What a laptop can and cannot do
+
+`docker compose up` gives you a relay that **accepts and queues** demands. It does not deliver them,
+and no compose file could: delivering mail needs a domain you control, DNS records that authorise
+this server to send for it, and outbound port 25 — see
+[Port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds) below, which is the part
+that catches people out.
+
+So on a laptop the path is real up to the point of handover, and stops there. You can watch a demand
+being composed, authenticated, accepted and queued. You cannot watch it arrive. This is the first
+entry in [Known gaps](#known-gaps), along with what it means for how a demand's status is recorded.
+
+To see the queue, publish the relay's interface and open it:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml up
+```
+
+Then <http://localhost:5000>, with the credentials from `POSTAL_ADMIN_EMAIL` / `POSTAL_ADMIN_PASSWORD`
+(`admin@example.com` / `postal_dev_password` unless you changed them).
+
+### The address a reply comes back to
+
+Every demand is sent from `removals-{jobId}@$MAIL_DOMAIN` — the job's own address. That is what ties
+a company's reply back to the exact request it answers, and it is why `MAIL_DOMAIN` is the one mail
+setting with no default: a default would be a domain somebody else owns, and every reply this
+instance ever provoked would go there.
+
+It is a local part rather than the more obvious `removals+{jobId}@`. A `+` is visibly a subaddress:
+enough mail systems strip it and enough web-form validators reject it as disposable that the address
+would fail precisely where a removal has to work — silently, because a demand that never arrived and
+one that was ignored look identical from here while the statutory clock runs on both. The cost is
+that the domain is routed as a catch-all rather than as one named mailbox.
+
+The development default is `removals.localhost.test`, which is deliberately unroutable.
+
+### Pointing it at a real deployment
+
+Two options, and the seam is the same for both — the application only knows how to hand a message to
+an SMTP relay.
+
+**Keep Postal.** Give it a domain, publish its SMTP port, and add the DNS records it asks for in its
+interface (SPF, DKIM, a return-path CNAME, and an MX if you want replies). Then set `MAIL_DOMAIN` to
+that domain and issue a real credential in the interface rather than using the one `postal-init`
+sets from `.env`.
+
+**Bring your own relay.** Set `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` in
+`.env` and stop the `postal-*` services. Anything that speaks SMTP works — including a hosted
+provider, with the caveat in [Port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds)
+about what that hands over.
+
+Either way, **turn `MAIL_REQUIRE_TLS` on**. It is off in the compose defaults because that hop is
+between two containers on a private network and the relay has no certificate for a hostname that
+resolves nowhere else. Anywhere the relay is reached across a network, leaving it off hands the
+credential and the body of every demand — somebody's name and address — to anything on the path.
+
+### Port 25, and why "just put it on a VM" is harder than it sounds
+
+This is the part that surprises people, so it is worth stating plainly before you plan a deployment
+around it.
+
+Handing a message *to* your own relay uses port 587 (submission), and nothing blocks that. Your
+relay then delivers to the recipient's mail server on **port 25**, server to server — and outbound
+25 is blocked nearly everywhere:
+
+| Where | Outbound port 25 |
+|---|---|
+| Google Cloud | **Blocked permanently.** No exception process. GCP documents this and points you at a third-party sending service |
+| AWS EC2 | Throttled by default; removable by request, tied to an Elastic IP with a reverse-DNS record |
+| Azure | Blocked on pay-as-you-go subscriptions; exceptions are limited and negotiated |
+| Home / office ISP | Almost always blocked, as standard anti-spam practice |
+
+Port 25 is only the first hurdle. A receiving server also checks that you are allowed to send for
+your domain: **SPF** listing your IP, **DKIM** signatures whose public key is published in your DNS
+(Postal generates the key and shows you the record), a **DMARC** policy, and a **PTR** record so your
+sending IP reverse-resolves to a name that forward-resolves back. Miss the PTR, or send from a
+residential range listed in Spamhaus's Policy Block List, and mail is refused before anyone reads it.
+
+So "run the relay on a VM you control" is accurate about *control* and misleading about *effort*.
+On GCP it does not work at all without a smarthost. On AWS or Azure it is a support request, a static
+IP, a reverse-DNS entry, and four DNS records before the first message is delivered.
+
+**The pragmatic alternative** is to stop delivering direct-to-MX and relay through a provider that
+already has the IP reputation and the DNS in order — either configure Postal's `POSTAL_SMTP_RELAYS`
+to hand off to one, or skip Postal entirely and point `MAIL_HOST` at it. Both work today, because
+the application only ever knows how to hand a message to an SMTP relay.
+
+Understand what that trades away, though. The reason the design bundles a self-hosted relay is that
+a third-party sending service would hold a standing copy of every demand this instance ever sends —
+which is somebody's name, home address and email, correlated with the companies holding their data.
+That is the same objection that keeps the queue and the key manager open source and self-hosted. A
+smarthost is a legitimate operational choice; it is not a neutral one.
+
+### Sending from home: three routes that work today
+
+None of this requires the bundled relay to deliver anything. The application only ever knows how to
+hand a message to something that speaks SMTP, so the practical answer to
+[port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds) is to hand it to somebody
+who has already solved that problem.
+
+**1. A mail account made for the purpose.** Create a free account — Gmail, Fastmail, anything —
+used for nothing but removal requests, and point the stack at its SMTP server:
+
+```
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-removals-account@gmail.com
+MAIL_PASSWORD=<app password, not your login password>
+MAIL_REQUIRE_TLS=true
+MAIL_DOMAIN=gmail.com
+```
+
+Then stop the `postal-*` services. This is the cheapest route by a distance and the deliverability
+is better than anything you would run yourself. A broker gets an address that exists only to receive
+its reply, which is most of what the service-owned alias was protecting; replies collect in one
+inbox you can read.
+
+Two honest caveats. Google requires a phone number at signup and correlates accounts, so the account
+is a burner to the *broker* and not to Google. And app passwords require 2-step verification and are
+on their way out — Google has been moving third-party access to OAuth 2.0 since 2023 and is phasing
+app passwords out — so this route works now and will eventually need the OAuth sender that is on the
+to-do list rather than in the build.
+
+**2. Your own domain, relayed through a provider.** A domain is roughly $10–15 a year. Point its DNS
+at a transactional provider's free tier for outbound (SPF and DKIM on your own domain) and a
+forwarding service for inbound. More setup than route 1, and it is the only route that keeps the
+per-job alias below working — every demand goes out from `removals-{jobId}@yourdomain`, which is
+what a future reply-matching story is written against.
+
+**3. Your existing personal mailbox.** It works and it is the one to think twice about. Every broker
+you file against receives a live, personal address next to your real name and home address, in a
+message proving you respond to privacy requests. Brokers re-sell. Route 1 costs five minutes and
+avoids this entirely.
+
+#### What sending through a third-party mailbox costs you
+
+**The per-job alias does not survive it.** Gmail and most providers send as the account you
+authenticated with and replace any `From:` you set that is not a verified alias. So on routes 1 and
+3 the `removals-{jobId}@` address is composed and then overwritten, `MAIL_DOMAIN` has no effect on
+what actually goes out, and every reply lands in one inbox with nothing distinguishing which demand
+it answers.
+
+That costs nothing today, because nothing reads replies yet. It matters when something does: matching
+a reply to the demand it answers will have to work by mail threading — a reply carries `In-Reply-To`
+pointing at the `Message-Id` we already generate and record — rather than by the address it was sent
+to. Route 2 keeps the address-based option open; routes 1 and 3 commit to the threading one.
+
+### Postal runs under emulation on Apple Silicon
+
+Postal publishes an `amd64` image only, so `docker-compose.yml` pins `platform: linux/amd64` on its
+services. Docker Desktop runs them under emulation on an ARM Mac. It works; it is slow to start.
+Nothing else in the stack is affected.
+
 ## OpenBao, sealing, and the unseal key
 
 OpenBao encrypts its storage with a master key, which is itself protected by an **unseal key**. On
@@ -1224,6 +1444,11 @@ If you are only running this locally, you can stop reading here. If you are depl
 | Passkey relying party is `localhost` over plain HTTP | It is the only origin your browser will reach | Your real domain over HTTPS. Browsers refuse WebAuthn on any non-`localhost` origin without it, so this is enforced whether you set it or not |
 | Token signing key `dbr_dev_token_signing_key_...`, committed to the repo | Nobody else can reach the API to use it | A real secret. Whoever knows this key can mint an access token for any account, so it is the single most important value in this table |
 | Terms version `2026-06-01`, naming no document that exists | Nobody is agreeing to anything on your laptop | The version of terms you actually serve. Every account records this as what its owner accepted, and a version naming nothing makes that record worthless — the one row here that is not a secret and still has to change |
+| Mail credential `dbr_dev_smtp_credential`, committed to the repo | The relay is a container only your worker can reach | A credential issued in Postal's own interface. `postal-init` forces the committed one so the stack self-configures, which is exactly what a real deployment must not do |
+| `MAIL_REQUIRE_TLS=false` | The hop is between two containers on a private network, and the relay has no certificate for a name that resolves nowhere else | **On.** Off across a network hands the credential and the body of every demand — a real name and address — to anything on the path |
+| `MAIL_DOMAIN=removals.localhost.test` | Deliberately unroutable, so nothing escapes | A domain you control, with the DNS records that authorise this server to send for it. Every demand carries a return address on this domain |
+| Postal's admin `admin@example.com` / `postal_dev_password` | Its interface is off the host unless you add the dev-ports overlay | A real account. Whoever holds it can read every demand this instance has sent |
+| `postal-init` verifying the mail domain outright | DNS verification cannot pass for a domain nobody owns, and refusing to send would make the local stack unable to demonstrate anything | Verify the domain properly in Postal's interface. An unverified domain that Postal believes is verified will be rejected by the receiving world instead |
 | Consent policy version `2026-06-01`, naming no document either | Same reason | The version of the consent text you actually serve. Every grant and withdrawal records it, and it is what answers "what was this person shown" long after the wording moved on. A separate document from the terms, so it gets a separate version |
 
 One limitation of the internal edge is worth naming here rather than leaving to be found: **there
@@ -1249,6 +1474,69 @@ concerns can't be accidentally wired into a self-hosted build, and vice versa.
 model there is genuinely different from a multi-tenant instance holding many people's identity
 data, and this project doesn't pretend otherwise. What it does insist on is that the difference be
 explicit rather than assumed.
+
+## Known gaps
+
+Things that are deliberately not finished yet, collected in one place so nobody has to infer them
+from what the code does not do. Each is a real limitation of the current build, not a bug.
+
+### Demands are composed and queued, never delivered
+
+The whole path runs — a demand is opened, claimed, worded from reviewed content, addressed from the
+job it belongs to, and handed to the relay, which accepts it. **The bundled relay then cannot deliver
+it**, and on a laptop it never will: that needs a domain you control, its DNS records, and outbound
+port 25. See [Port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds) for why that is
+harder than it sounds even on a cloud VM.
+
+This is a gap in the default stack rather than in the product. Pointing the same SMTP setting at a
+mail account made for the purpose makes demands go out for real, today, with no code change —
+[Sending from home](#sending-from-home-three-routes-that-work-today) covers the three routes and what
+each one costs. What is still missing is a first-class OAuth sender, since the app passwords route 1
+depends on are being phased out.
+
+Worth understanding rather than working around: **the application cannot tell the difference, by
+design.** Handing a message to a relay returns as soon as the relay accepts it, which is not a
+promise that anyone received it — so a demand is recorded as sent with its deadline running whether
+or not it ever arrives. That is true in production too. What actually closes the loop is a reply
+coming back, or the deadline expiring.
+
+### Nothing reads the replies
+
+A company's answer is addressed to `removals-{jobId}@…` and arrives at a mailbox no code reads yet.
+The relay that receives it is running; the webhook that would turn a reply into a confirmed removal
+is not built. Until it is, a removal never progresses past *submitted* on its own.
+
+### No verification scan, so nothing is ever confirmed gone
+
+The removal lifecycle stops at a demand sent with the clock running. Whether a listing actually
+disappeared — or reappeared months later — is answered by a verification scan, which does not exist.
+This is the deliberate boundary of the current milestone rather than an oversight.
+
+### The demand wording has not been reviewed by counsel
+
+Three templates ship: CCPA deletion, CCPA opt-out-of-sale, and a courtesy request citing no statute.
+They are written to be conservative and to claim nothing the catalog does not support, and they have
+not been read by a lawyer. Demands under the other four jurisdictions in the catalog are recognised
+and given correct deadlines, and **refuse to send rather than improvise wording**, which is the safe
+failure — but it does mean mail-based removals only work for California today.
+
+### The catalog has no real companies in it
+
+One reference fixture, used to exercise the engines. A live instance would search nobody and demand
+nothing however good the code is. Filling it is research rather than programming, and it is the
+single largest thing standing between this and a usable product.
+
+### Grants are recorded but nobody is told
+
+Every release of identity data writes a row saying what was issued, for which job, and when it was
+spent. There is no audit-log writer and no `/audit-log` route, so a tenant cannot yet read what was
+done with their data — a row somebody *could* read is not a trail somebody is *told* about.
+
+### Two smaller ones, documented where they live
+
+**No certificate revocation on the internal edge**, and **signup answers `409` for an address that
+already has an account.** Both are explained in
+[Security: local defaults vs. a real deployment](#security-local-defaults-vs-a-real-deployment).
 
 ## Troubleshooting
 

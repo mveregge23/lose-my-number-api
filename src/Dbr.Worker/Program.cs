@@ -87,6 +87,22 @@ builder.Services.AddDbrRemovalDispatch(builder.Configuration);
 // than the grant it holds was minted for.
 builder.Services.AddDbrInternalApiClient(builder.Configuration);
 
+// How a demand actually leaves this process. Registered in the worker and not in the API
+// because the API never sends one: it accepts the request and puts it in a lane, and
+// everything after that happens here.
+//
+// Validated at startup, which is where a relay nobody configured belongs. The alternative
+// is a worker that starts cleanly, claims a demand, mints a grant for somebody's name and
+// address, and only then discovers it has nowhere to send it — having spent an attempt
+// and opened an identity to learn something a setting could have said first.
+builder.Services.AddDbrMail(builder.Configuration);
+
+// And what to write. The mailboxes and the wording are read here, so a document that cannot
+// be used stops this process rather than one attempt: a company being sent something built
+// out of malformed wording is worse than a worker that refuses to start, and a build that
+// quietly asks fewer companies than its catalog claims is worse than both.
+builder.Services.AddDbrEmailConnectors();
+
 builder.Services.AddHostedService<Worker>();
 
 // On unless a deployment turns it off. A scan somebody asked for and that nothing ever

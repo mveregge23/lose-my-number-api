@@ -23,3 +23,11 @@ services:
   openbao:
     ports:
       - "${BAO_PORT:-8200}:8200"
+
+  postal-web:
+    ports:
+      - "${POSTAL_WEB_PORT:-5000}:5000"        # the relay's queues, deliveries and bounces
+
+  postal-smtp:
+    ports:
+      - "${POSTAL_SMTP_PORT:-2525}:25"         # hand a demand over by hand, with swaks or smtplib

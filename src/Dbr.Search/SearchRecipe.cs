@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Recipes;
 using Dbr.Domain.Search;
 
 namespace Dbr.Search;

@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# What an opt-out-of-sale demand under the CCPA says.
+#
+# A separate document from the deletion wording rather than a variation on it, because they
+# are different claims. Deletion asks a company to stop holding something; this asks it to
+# keep holding it and stop selling or sharing it. Sending one where the other belongs asks
+# for something the person did not ask for, and a company acting on it would be right to say
+# it did what was requested.
+#
+# Verification is not offered here, and that is read from the act rather than assumed:
+# section 1798.135 requires a business to honour an opt-out without requiring the consumer to
+# create an account, and the catalog entry beside this records the verification level as
+# none. Volunteering identity documents for a right that does not require them would be
+# handing over more than the request needs.
+
+statuteCode: CCPA
+requestType: opt_out_sale
+citationUrl: https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1798.120
+
+reviewedAt: 2026-09-08
+reviewedBy: "@mveregge23"
+
+subject: "Request to opt out of the sale or sharing of personal information (CCPA)"
+
+body: |
+  To whom it may concern,
+
+  I am exercising my right under the California Consumer Privacy Act, Civil Code section
+  1798.120, to direct you not to sell or share my personal information with any third party.
+
+  This request applies to the person identified below, and I ask that you treat it as
+  applying to any personal information you hold about them, however it was obtained.
+
+  Name: {{names.full}}
+  Address: {{addresses.first.line1}}, {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
+  Email: {{contacts.email}}
+
+  The details above are provided so that you can locate the correct records, and for no other
+  purpose. Please do not add them to any mailing list or retain them beyond what is needed to
+  process this request.
+
+  Please confirm in writing that this opt-out has been applied.
+
+  Replies to this address reach me.

@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# What a deletion demand under the CCPA says.
+#
+# This file is wording, not law: the deadline, the extension and the verification level for
+# this right live in ../us-ca-ccpa.yaml and are what the dispatcher computes with. What is
+# here is the sentence a company reads, and it is held to the same review bar for a reason
+# the deadline makes plain — a wrong deadline is caught by the first company that answers on
+# time, and a sentence claiming a right somebody does not have is caught by nobody.
+#
+# Two things are deliberately not claimed. It does not say the sender is a California
+# resident as a matter of fact; it says they are exercising a right under the act, which is
+# what the profile's residency actually supports. And it does not threaten a complaint or a
+# penalty — a first demand that opens with a threat gets handled by a company's lawyers
+# rather than its privacy desk, which is slower for the person waiting.
+#
+# The placeholders are the closed set a recipe may write, and they are also the declaration:
+# whichever ones appear here are the groups of an identity this demand causes to be
+# decrypted, and nothing else can be. There is no date of birth below, so a demand under
+# this act cannot cause one to be released.
+
+statuteCode: CCPA
+requestType: delete
+citationUrl: https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1798.105
+
+reviewedAt: 2026-09-08
+reviewedBy: "@mveregge23"
+
+# Names nobody. It crosses every relay between here and the company in the clear and shows
+# up in a notification on somebody's phone, so who the request is about belongs in the body
+# and not here.
+subject: "Request to delete personal information (CCPA)"
+
+body: |
+  To whom it may concern,
+
+  I am exercising my right under the California Consumer Privacy Act, Civil Code section
+  1798.105, to request that you delete the personal information you have collected about me
+  and direct any service providers and contractors to do the same.
+
+  This request covers all personal information you hold about the person identified below,
+  including information obtained from third parties or public records.
+
+  Name: {{names.full}}
+  Address: {{addresses.first.line1}}, {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
+  Email: {{contacts.email}}
+
+  The details above are provided so that you can locate the correct records, and for no other
+  purpose. Please do not add them to any mailing list or retain them beyond what is needed to
+  process this request.
+
+  Please confirm in writing when the deletion is complete, or tell me which exemption you are
+  relying on if you decline any part of this request.
+
+  Replies to this address reach me.

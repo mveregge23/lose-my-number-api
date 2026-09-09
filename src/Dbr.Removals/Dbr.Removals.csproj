@@ -1,0 +1,44 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Dbr.Removals</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Its own project rather than a folder in Dbr.Infrastructure, for the reason the
+         search engine is: what composes a demand should not be able to reach a database, a
+         transport or the vault. It holds a template, an address and the identity it was
+         handed, and the only thing it can do with them is write a message.
+
+         No AngleSharp here, and that is the difference from the search side. Nothing in
+         this project reads a page a company wrote — a mailbox has no markup — so the
+         parser that exists to handle hostile HTML has no business being in the process that
+         handles none. -->
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dbr.Domain\Dbr.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Read from a checkout rather than shipped inside an image, the same as the search
+         recipes: both are reviewed content, and an operator is entitled to see the wording
+         that goes out in their name before it does.
+
+         The templates sit under catalog/legal-basis/ so they inherit that path's review
+         bar. A deadline in the wrong place misinforms somebody about their legal position;
+         so does a sentence claiming a right that does not exist where they live. -->
+    <None Include="..\..\catalog\brokers\**\email.yaml"
+          Link="catalog\brokers\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\catalog\legal-basis\templates\*.yaml"
+          Link="catalog\legal-basis\templates\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

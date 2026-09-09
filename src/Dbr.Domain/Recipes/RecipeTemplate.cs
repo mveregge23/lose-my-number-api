@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Dbr.Domain.Profiles;
 
-namespace Dbr.Search;
+namespace Dbr.Domain.Recipes;
 
 /// <summary>
 /// One thing a recipe may write into a query, and the group it comes out of.
@@ -226,7 +226,7 @@ public sealed partial class RecipeTemplate
     }
 
     /// <summary>
-    /// Writes the identity into the template, escaping every value it puts there.
+    /// Writes the identity into a query, escaping every value it puts there.
     /// </summary>
     /// <remarks>
     /// <b>The literal halves are left alone and the values are escaped.</b> A name with an
@@ -234,7 +234,24 @@ public sealed partial class RecipeTemplate
     /// bug that only shows up for the people whose names contain one — and a recipe author
     /// escaping by hand would be escaping the punctuation they wrote as well.
     /// </remarks>
-    public RenderResult Render(ProfileIdentityFields identity)
+    public RenderResult RenderQuery(ProfileIdentityFields identity) =>
+        Render(identity, Uri.EscapeDataString);
+
+    /// <summary>
+    /// Writes the identity into prose, exactly as it is held.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nothing is escaped, and that is the difference from
+    /// <see cref="RenderQuery"/>.</b> A demand is read by a person, so a name with an
+    /// ampersand in it has to arrive as that name rather than as <c>%26</c> — and there is
+    /// no punctuation here that a value could break out of, because the result is not
+    /// parsed by anything. The two destinations are named separately rather than sharing a
+    /// method with a flag, so that neither can be reached by forgetting to pass one.
+    /// </remarks>
+    public RenderResult RenderText(ProfileIdentityFields identity) =>
+        Render(identity, value => value);
+
+    private RenderResult Render(ProfileIdentityFields identity, Func<string, string> escape)
     {
         ArgumentNullException.ThrowIfNull(identity);
 
@@ -260,7 +277,7 @@ public sealed partial class RecipeTemplate
                 return RenderResult.NothingFor(placeholder.Path);
             }
 
-            built.Append(Uri.EscapeDataString(value));
+            built.Append(escape(value));
         }
 
         return RenderResult.Rendered(built.ToString());

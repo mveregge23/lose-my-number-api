@@ -5,6 +5,7 @@ using System.Net;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Recipes;
 using Dbr.Domain.Search;
 
 namespace Dbr.Search;
@@ -70,7 +71,7 @@ public sealed class GenericWebSearchConnector(
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var rendered = Recipe.Query.Render(context.ReleasedIdentity);
+        var rendered = Recipe.Query.RenderQuery(context.ReleasedIdentity);
 
         if (rendered.Value is null)
         {

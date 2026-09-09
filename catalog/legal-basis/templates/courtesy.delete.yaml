@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# What a deletion request says when no statute backs it.
+#
+# The wording used when a company is outside every regime this instance knows about, or the
+# person asking lives somewhere none of them reach. The deadline on such a demand comes from
+# the company's own published target rather than from law, which the API surfaces as
+# `deadlineSource: operational_default` — and the difference has to be visible in the message
+# too, not only in the record.
+#
+# So this asks rather than instructs, and it cites nothing. That is the whole reason it is a
+# separate document: a request wearing the grammar of a legal demand would claim an
+# obligation in somebody's name that nothing established, and a company that checked would be
+# right to refuse it. It also names no deadline, because inventing one would be asserting the
+# same thing more quietly.
+#
+# There is no `statuteCode` and no `citationUrl` here, and the reader refuses either one
+# without the other — the same rule the connector contract holds a demand to.
+
+requestType: delete
+
+reviewedAt: 2026-09-08
+reviewedBy: "@mveregge23"
+
+subject: "Request to delete personal information"
+
+body: |
+  To whom it may concern,
+
+  I am writing to ask you to delete the personal information you hold about me, and to stop
+  selling or sharing it with third parties.
+
+  I am not asserting a statutory right in this request. I am asking you to honour your own
+  published privacy commitments in respect of the person identified below.
+
+  Name: {{names.full}}
+  Address: {{addresses.first.line1}}, {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
+  Email: {{contacts.email}}
+
+  The details above are provided so that you can locate the correct records, and for no other
+  purpose. Please do not add them to any mailing list or retain them beyond what is needed to
+  process this request.
+
+  Please confirm in writing when this is done, or let me know if you are unable to act on it.
+
+  Replies to this address reach me.

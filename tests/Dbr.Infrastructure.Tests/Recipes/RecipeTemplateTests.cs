@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Recipes;
 
-namespace Dbr.Search.Tests;
+namespace Dbr.Infrastructure.Tests.Recipes;
 
 /// <summary>
 /// What a recipe may write into a query, and what it causes to be decrypted by writing it.
@@ -110,7 +111,7 @@ public class RecipeTemplateTests
     public void The_identity_is_written_where_the_placeholders_are()
     {
         var rendered = Parse("/search?name={{names.full}}&city={{addresses.first.city}}")
-            .Render(Alex);
+            .RenderQuery(Alex);
 
         Assert.Null(rendered.Missing);
         Assert.Equal("/search?name=Alex%20Whitfield&city=Sacramento", rendered.Value);
@@ -129,7 +130,7 @@ public class RecipeTemplateTests
     {
         var identity = Alex with { Names = ["Ampersand & Co"] };
 
-        var rendered = Parse("/search?name={{names.full}}&page=1").Render(identity);
+        var rendered = Parse("/search?name={{names.full}}&page=1").RenderQuery(identity);
 
         Assert.Equal("/search?name=Ampersand%20%26%20Co&page=1", rendered.Value);
     }
@@ -144,7 +145,7 @@ public class RecipeTemplateTests
     [InlineData("dateOfBirth.year", "1985")]
     public void Each_placeholder_writes_what_it_says_it_does(string path, string expected)
     {
-        Assert.Equal(expected, Parse($"{{{{{path}}}}}").Render(Alex).Value);
+        Assert.Equal(expected, Parse($"{{{{{path}}}}}").RenderQuery(Alex).Value);
     }
 
     /// <summary>
@@ -161,7 +162,7 @@ public class RecipeTemplateTests
     {
         var noAddress = Alex with { Addresses = [] };
 
-        var rendered = Parse("/search?city={{addresses.first.city}}").Render(noAddress);
+        var rendered = Parse("/search?city={{addresses.first.city}}").RenderQuery(noAddress);
 
         Assert.Null(rendered.Value);
         Assert.Equal("addresses.first.city", rendered.Missing);
@@ -172,7 +173,7 @@ public class RecipeTemplateTests
     {
         var emailOnly = Alex;
 
-        var rendered = Parse("{{contacts.phone}}").Render(emailOnly);
+        var rendered = Parse("{{contacts.phone}}").RenderQuery(emailOnly);
 
         Assert.Null(rendered.Value);
         Assert.Equal("contacts.phone", rendered.Missing);
@@ -183,7 +184,7 @@ public class RecipeTemplateTests
     {
         var oneWord = Alex with { Names = ["Prince"] };
 
-        Assert.Equal("Prince", Parse("{{names.last}}").Render(oneWord).Value);
-        Assert.Null(Parse("{{names.first}}").Render(oneWord).Value);
+        Assert.Equal("Prince", Parse("{{names.last}}").RenderQuery(oneWord).Value);
+        Assert.Null(Parse("{{names.first}}").RenderQuery(oneWord).Value);
     }
 }
