@@ -1071,6 +1071,60 @@ which is somebody's name, home address and email, correlated with the companies 
 That is the same objection that keeps the queue and the key manager open source and self-hosted. A
 smarthost is a legitimate operational choice; it is not a neutral one.
 
+### Sending from home: three routes that work today
+
+None of this requires the bundled relay to deliver anything. The application only ever knows how to
+hand a message to something that speaks SMTP, so the practical answer to
+[port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds) is to hand it to somebody
+who has already solved that problem.
+
+**1. A mail account made for the purpose.** Create a free account — Gmail, Fastmail, anything —
+used for nothing but removal requests, and point the stack at its SMTP server:
+
+```
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-removals-account@gmail.com
+MAIL_PASSWORD=<app password, not your login password>
+MAIL_REQUIRE_TLS=true
+MAIL_DOMAIN=gmail.com
+```
+
+Then stop the `postal-*` services. This is the cheapest route by a distance and the deliverability
+is better than anything you would run yourself. A broker gets an address that exists only to receive
+its reply, which is most of what the service-owned alias was protecting; replies collect in one
+inbox you can read.
+
+Two honest caveats. Google requires a phone number at signup and correlates accounts, so the account
+is a burner to the *broker* and not to Google. And app passwords require 2-step verification and are
+on their way out — Google has been moving third-party access to OAuth 2.0 since 2023 and is phasing
+app passwords out — so this route works now and will eventually need the OAuth sender that is on the
+to-do list rather than in the build.
+
+**2. Your own domain, relayed through a provider.** A domain is roughly $10–15 a year. Point its DNS
+at a transactional provider's free tier for outbound (SPF and DKIM on your own domain) and a
+forwarding service for inbound. More setup than route 1, and it is the only route that keeps the
+per-job alias below working — every demand goes out from `removals-{jobId}@yourdomain`, which is
+what a future reply-matching story is written against.
+
+**3. Your existing personal mailbox.** It works and it is the one to think twice about. Every broker
+you file against receives a live, personal address next to your real name and home address, in a
+message proving you respond to privacy requests. Brokers re-sell. Route 1 costs five minutes and
+avoids this entirely.
+
+#### What sending through a third-party mailbox costs you
+
+**The per-job alias does not survive it.** Gmail and most providers send as the account you
+authenticated with and replace any `From:` you set that is not a verified alias. So on routes 1 and
+3 the `removals-{jobId}@` address is composed and then overwritten, `MAIL_DOMAIN` has no effect on
+what actually goes out, and every reply lands in one inbox with nothing distinguishing which demand
+it answers.
+
+That costs nothing today, because nothing reads replies yet. It matters when something does: matching
+a reply to the demand it answers will have to work by mail threading — a reply carries `In-Reply-To`
+pointing at the `Message-Id` we already generate and record — rather than by the address it was sent
+to. Route 2 keeps the address-based option open; routes 1 and 3 commit to the threading one.
+
 ### Postal runs under emulation on Apple Silicon
 
 Postal publishes an `amd64` image only, so `docker-compose.yml` pins `platform: linux/amd64` on its
@@ -1429,10 +1483,16 @@ from what the code does not do. Each is a real limitation of the current build, 
 ### Demands are composed and queued, never delivered
 
 The whole path runs — a demand is opened, claimed, worded from reviewed content, addressed from the
-job it belongs to, and handed to the relay, which accepts it. Delivery is where it stops, and on a
-laptop it always will: it needs a domain you control, its DNS records, and outbound port 25. See
-[Port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds) for why that is harder than
-it sounds even on a cloud VM.
+job it belongs to, and handed to the relay, which accepts it. **The bundled relay then cannot deliver
+it**, and on a laptop it never will: that needs a domain you control, its DNS records, and outbound
+port 25. See [Port 25](#port-25-and-why-just-put-it-on-a-vm-is-harder-than-it-sounds) for why that is
+harder than it sounds even on a cloud VM.
+
+This is a gap in the default stack rather than in the product. Pointing the same SMTP setting at a
+mail account made for the purpose makes demands go out for real, today, with no code change —
+[Sending from home](#sending-from-home-three-routes-that-work-today) covers the three routes and what
+each one costs. What is still missing is a first-class OAuth sender, since the app passwords route 1
+depends on are being phased out.
 
 Worth understanding rather than working around: **the application cannot tell the difference, by
 design.** Handing a message to a relay returns as soon as the relay accepts it, which is not a
