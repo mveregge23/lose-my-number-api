@@ -189,37 +189,48 @@ public static class DemandCatalogReader
             .Order(StringComparer.Ordinal))
         {
             var name = Path.GetFileName(path);
-            var template = ReadTemplate(name, path, problems);
 
-            if (template is null)
+            foreach (var template in ReadTemplate(name, path, problems))
             {
-                continue;
+                if (seen.TryGetValue(template.Key, out var already))
+                {
+                    problems.Add(
+                        $"'{name}' and '{already}' both word the same demand. Which wording "
+                        + "went out would depend on the order the directory happened to be "
+                        + "read in, which is not something a reviewer can check.");
+
+                    continue;
+                }
+
+                seen[template.Key] = name;
+                templates.Add(template);
             }
-
-            if (seen.TryGetValue(template.Key, out var already))
-            {
-                problems.Add(
-                    $"'{name}' and '{already}' both word the same demand. Which wording went "
-                    + "out would depend on the order the directory happened to be read in, "
-                    + "which is not something a reviewer can check.");
-
-                continue;
-            }
-
-            seen[template.Key] = name;
-            templates.Add(template);
         }
 
         return templates;
     }
 
-    private static DemandTemplate? ReadTemplate(string name, string path, List<string> problems)
+    /// <summary>
+    /// The wording in one document, once per right it words.
+    /// </summary>
+    /// <remarks>
+    /// <b>One document may word more than one right, and usually should.</b> Deletion and
+    /// opting out of a sale are separate rights under separate sections, and a person who
+    /// wants one almost always wants the other — so the message exercises both and this
+    /// files the same wording under each, rather than making a reviewer keep two nearly
+    /// identical documents in step. Splitting them again is a change to a list in a
+    /// document, not to anything here.
+    /// </remarks>
+    private static IReadOnlyList<DemandTemplate> ReadTemplate(
+        string name,
+        string path,
+        List<string> problems)
     {
         var file = Parse<DemandTemplateFile>(name, path, problems);
 
         if (file is null)
         {
-            return null;
+            return [];
         }
 
         var before = problems.Count;
@@ -227,15 +238,37 @@ public static class DemandCatalogReader
         // The catalog's own spelling, read by the catalog's own parser. A second one here
         // would be a second opinion about what 'opt_out_sale' means, and the day they
         // disagreed the wording would be filed under a right nobody invoked.
-        var requestType = CatalogVocabulary.ParseLegalRequestType(file.RequestType?.Trim());
+        var requestTypes = new List<LegalRequestType>();
 
-        if (requestType is null)
+        foreach (var spelled in file.RequestTypes ?? [])
+        {
+            var parsed = CatalogVocabulary.ParseLegalRequestType(spelled?.Trim());
+
+            if (parsed is null)
+            {
+                problems.Add(
+                    $"'{name}' invokes '{spelled}', which is not a right this catalog knows "
+                    + "— it is 'delete', 'opt_out_sale' or 'opt_out_targeted_ads'.");
+
+                continue;
+            }
+
+            if (requestTypes.Contains(parsed.Value))
+            {
+                problems.Add($"'{name}' names '{spelled}' twice.");
+
+                continue;
+            }
+
+            requestTypes.Add(parsed.Value);
+        }
+
+        if (requestTypes.Count == 0)
         {
             problems.Add(
-                $"'{name}' does not say which right it invokes. A demand to delete and a "
-                + "demand to opt out of a sale are different claims, and "
-                + $"'{file.RequestType}' names neither — it is 'delete', 'opt_out_sale' or "
-                + "'opt_out_targeted_ads'.");
+                $"'{name}' does not say which rights it invokes. A demand to delete and a "
+                + "demand to opt out of a sale are different claims, and wording filed under "
+                + "neither would never be reached.");
         }
 
         // A statute and its citation travel together or not at all, which is the same rule
@@ -291,14 +324,18 @@ public static class DemandCatalogReader
 
         if (problems.Count != before)
         {
-            return null;
+            return [];
         }
 
-        var key = hasCode
-            ? DemandTemplateKey.For(file.StatuteCode!.Trim(), requestType!.Value)
-            : DemandTemplateKey.Courtesy(requestType!.Value);
-
-        return new DemandTemplate(key, subject!, body!);
+        return
+        [
+            .. requestTypes.Select(requestType => new DemandTemplate(
+                hasCode
+                    ? DemandTemplateKey.For(file.StatuteCode!.Trim(), requestType)
+                    : DemandTemplateKey.Courtesy(requestType),
+                subject!,
+                body!)),
+        ];
     }
 
     private static RecipeTemplate? ReadTemplateText(
@@ -362,7 +399,7 @@ public static class DemandCatalogReader
     {
         public string? StatuteCode { get; set; }
 
-        public string? RequestType { get; set; }
+        public List<string?>? RequestTypes { get; set; }
 
         public string? CitationUrl { get; set; }
 

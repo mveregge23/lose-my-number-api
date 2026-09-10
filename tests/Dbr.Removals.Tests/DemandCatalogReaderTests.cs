@@ -63,6 +63,68 @@ public class DemandCatalogReaderTests
     }
 
     [Fact]
+    public void One_document_words_both_rights()
+    {
+        // Deletion and opting out of a sale are separate rights, and somebody who wants one
+        // almost always wants the other — so the shipped wording exercises both and is filed
+        // under each. The two keys must reach the same document, or a demand opened as an
+        // opt-out would send different sentences from one opened as a deletion.
+        var templates = Shipped().Templates;
+
+        var deletion = templates.Single(t => t.Key == DemandTemplateKey.For("CCPA", LegalRequestType.Delete));
+        var optOut = templates.Single(t => t.Key == DemandTemplateKey.For("CCPA", LegalRequestType.OptOutSale));
+
+        Assert.Equal(deletion.Body.Raw, optOut.Body.Raw);
+        Assert.Equal(deletion.Subject.Raw, optOut.Subject.Raw);
+
+        // And it says so: both sections, in one message.
+        Assert.Contains("1798.105", deletion.Body.Raw, StringComparison.Ordinal);
+        Assert.Contains("1798.120", deletion.Body.Raw, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_shipped_wording_does_not_demand_publicly_available_information()
+    {
+        // Section 1798.140(v)(2) excludes it from the definition of personal information, and
+        // much of what a data broker holds arrives that way. Demanding it claims a right the
+        // act does not grant, and hands a company a correct-sounding reason to refuse all of
+        // it rather than the part it covers.
+        foreach (var template in Shipped().Templates)
+        {
+            Assert.DoesNotContain("public record", template.Body.Raw, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("publicly available", template.Body.Raw, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void A_document_naming_no_right_is_refused()
+    {
+        var root = WriteTemplate("reviewedBy: \"@somebody\"\nsubject: s\nbody: b\n");
+
+        var read = DemandCatalogReader.Read(Path.Combine(root, "no-recipes"), root);
+
+        Assert.Empty(read.Templates);
+        Assert.Contains(
+            read.Problems,
+            problem => problem.Contains("does not say which rights it invokes", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_right_this_catalog_does_not_know_is_refused()
+    {
+        var root = WriteTemplate(
+            "requestTypes: [delete, sell_my_soul]\nreviewedBy: \"@somebody\"\n"
+            + "subject: s\nbody: b\n");
+
+        var read = DemandCatalogReader.Read(Path.Combine(root, "no-recipes"), root);
+
+        Assert.Empty(read.Templates);
+        Assert.Contains(
+            read.Problems,
+            problem => problem.Contains("sell_my_soul", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void The_courtesy_wording_asserts_no_statute()
     {
         // The one property that makes it a separate document. A request wearing the grammar
@@ -109,7 +171,7 @@ public class DemandCatalogReaderTests
     public void Wording_nobody_reviewed_is_refused()
     {
         var root = WriteTemplate(
-            "statuteCode: CCPA\nrequestType: delete\ncitationUrl: https://example.test\n"
+            "statuteCode: CCPA\nrequestTypes: [delete]\ncitationUrl: https://example.test\n"
             + "subject: s\nbody: b\n");
 
         var read = DemandCatalogReader.Read(Path.Combine(root, "no-recipes"), root);
@@ -122,7 +184,7 @@ public class DemandCatalogReaderTests
     public void Wording_that_names_an_act_and_gives_nowhere_to_read_it_is_refused()
     {
         var root = WriteTemplate(
-            "statuteCode: CCPA\nrequestType: delete\nreviewedBy: \"@somebody\"\n"
+            "statuteCode: CCPA\nrequestTypes: [delete]\nreviewedBy: \"@somebody\"\n"
             + "subject: s\nbody: b\n");
 
         var read = DemandCatalogReader.Read(Path.Combine(root, "no-recipes"), root);
@@ -135,7 +197,7 @@ public class DemandCatalogReaderTests
     public void Wording_with_a_placeholder_that_is_not_one_fails_review_rather_than_a_demand()
     {
         var root = WriteTemplate(
-            "requestType: delete\nreviewedBy: \"@somebody\"\nsubject: s\n"
+            "requestTypes: [delete]\nreviewedBy: \"@somebody\"\nsubject: s\n"
             + "body: \"{{names.middle}}\"\n");
 
         var read = DemandCatalogReader.Read(Path.Combine(root, "no-recipes"), root);

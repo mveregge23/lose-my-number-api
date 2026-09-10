@@ -566,8 +566,8 @@ deadlines out of C#, applied to the part a company actually reads. They sit in
 under the path `.github/CODEOWNERS` holds to two approvals.
 
 ```
-catalog/legal-basis/templates/us-ca-ccpa.delete.yaml    -> what a CCPA deletion demand says
-catalog/legal-basis/templates/courtesy.delete.yaml      -> what a request citing no statute says
+catalog/legal-basis/templates/us-ca-ccpa.yaml           -> what a CCPA demand says
+catalog/legal-basis/templates/courtesy.yaml             -> what a request citing no statute says
 catalog/brokers/<company>/email.yaml                    -> which mailbox that company takes it at
 ```
 
@@ -590,9 +590,14 @@ which it could. There is a test asserting exactly that against the files that sh
 **Missing wording is a refusal, not a fallback.** A demand under an act with no reviewed template
 fails as unsupported and nothing is sent. Sending the nearest wording instead would claim an
 obligation in somebody's name that nothing established, and a company that checked would be right to
-refuse it. Today that means CCPA deletion, CCPA opt-out-of-sale, and a courtesy deletion request are
-worded; demands under Connecticut, Colorado, Utah and Virginia law are recognised, given the right
-deadline, and cannot yet be sent by mail.
+refuse it. Today that means California and a courtesy request citing no statute are worded; demands
+under Connecticut, Colorado, Utah and Virginia law are recognised, given the right deadline, and
+cannot yet be sent by mail.
+
+**One message exercises both rights.** Deletion (§1798.105) and opting out of sale or sharing
+(§1798.120) are separate rights, and a document declares the ones it words in a `requestTypes` list,
+so a demand opened as either sends the same message. They are not substitutes: a company that deletes
+today and re-acquires the same record next month has honoured the first and not the second.
 
 ## Asking for a scan
 
@@ -1541,7 +1546,8 @@ standing decryption rights uses one. Those are worked through on the story rathe
 
 ### The demand wording has not been reviewed by counsel
 
-Three templates ship: CCPA deletion, CCPA opt-out-of-sale, and a courtesy request citing no statute.
+Two templates ship — one for California and one for a request citing no statute — each exercising
+both deletion and opt-out in a single message.
 They are written to be conservative and to claim nothing the catalog does not support, and they have
 not been read by a lawyer. Demands under the other four jurisdictions in the catalog are recognised
 and given correct deadlines, and **refuse to send rather than improvise wording**, which is the safe

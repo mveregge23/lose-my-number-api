@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# What a demand under the CCPA says.
+#
+# This file is wording, not law: the deadline, the extension and the verification level for
+# each right live in ../us-ca-ccpa.yaml and are what the dispatcher computes with. What is
+# here is the sentence a company reads, and it is held to the same review bar for a reason
+# the deadline makes plain — a wrong deadline is caught by the first company that answers on
+# time, and a sentence claiming a right somebody does not have is caught by nobody.
+#
+# ONE MESSAGE, TWO RIGHTS. Deletion (section 1798.105) and opting out of sale or sharing
+# (section 1798.120) are separate rights, and this exercises both in one message because
+# somebody who wants one almost always wants the other — and because the two are not
+# substitutes: a company that deletes today and re-acquires the same record next month has
+# honoured the first and not the second. It is filed under both rights, so a demand opened
+# as either one sends this. Splitting them again is a change to the list below.
+#
+# Three things are deliberately not claimed.
+#
+#   * It does not say the sender is a California resident as a matter of fact; it says they
+#     are exercising a right under the act, which is what the profile's residency supports.
+#
+#   * It does not demand deletion of publicly available information. Section 1798.140(v)(2)
+#     excludes that from the definition of personal information, and much of what a data
+#     broker holds arrives that way — so demanding it would be claiming a right the act does
+#     not grant, and would hand a company a correct-sounding reason to refuse the whole
+#     request rather than the part it covers.
+#
+#   * It does not threaten a complaint or a penalty. A first demand that opens with a threat
+#     gets handled by a company's lawyers rather than its privacy desk, which is slower for
+#     the person waiting.
+#
+# WRITTEN IN THE FIRST PERSON, and that is not yet a settled question. This service sends on
+# somebody's behalf, which makes it an authorised agent, and an agent is generally expected
+# to hold the consumer's permission and to be able to show it. Nothing captures that
+# permission yet. First person is what these messages conventionally say and reads naturally
+# to a privacy desk; disclosing agency without being able to evidence it would invite the
+# authority question and answer it with nothing. Both halves — capturing an authorisation
+# and deciding whose voice this is written in — belong to the story that builds the first.
+#
+# The placeholders are the closed set a recipe may write, and they are also the declaration:
+# whichever ones appear here are the groups of an identity this demand causes to be
+# decrypted, and nothing else can be. There is no date of birth below, so a demand under
+# this act cannot cause one to be released.
+
+statuteCode: CCPA
+
+requestTypes:
+  - delete
+  - opt_out_sale
+
+citationUrl: https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1798.105
+
+reviewedAt: 2026-09-10
+reviewedBy: "@mveregge23"
+
+# Names nobody. It crosses every relay between here and the company in the clear and shows
+# up in a notification on somebody's phone, so who the request is about belongs in the body
+# and not here.
+subject: "Request to delete personal information and opt out of its sale (CCPA)"
+
+body: |
+  To whom it may concern,
+
+  I am exercising two rights under the California Consumer Privacy Act.
+
+  First, under Civil Code section 1798.105, I request that you delete the personal
+  information you have collected about me. Section 1798.105(c) also requires you to direct
+  your service providers and contractors to delete it, and to notify any third parties to
+  whom you have sold or shared it that they must do the same.
+
+  Second, under Civil Code section 1798.120, I direct you not to sell or share my personal
+  information with any third party. This applies regardless of how you answer the deletion
+  request above — if you decline any part of it under an exemption, the opt-out still stands
+  for the information you keep.
+
+  This request covers the personal information you hold about the person identified below,
+  including information you obtained from third parties.
+
+  Name: {{names.full}}
+  Address: {{addresses.first.line1}}, {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
+  Email: {{contacts.email}}
+
+  The details above are provided so that you can locate the correct records, and for no other
+  purpose. Please do not add them to any mailing list or retain them beyond what is needed to
+  process this request.
+
+  Please confirm in writing when this has been done, or tell me which exemption you are
+  relying on if you decline any part of this request.
+
+  Replies to this address reach me.
