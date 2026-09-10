@@ -427,6 +427,7 @@ public class LineOneAcceptanceTests(PostgresFixture postgres, OpenBaoFixture ope
         services.AddSingleton(Options.Create(new RemovalOptions()));
         services.AddSingleton(TimeProvider.System);
 
+        services.AddScoped<RemovalVerification>();
         services.AddScoped<ScanCompletion>();
         services.AddScoped<IScanDispatcher, ScanDispatcher>();
         services.AddScoped<IBrokerWorkHandler<ScanBrokerWork>, ScanBrokerWorkHandler>();

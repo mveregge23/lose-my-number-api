@@ -4,6 +4,7 @@
 using Dbr.Domain.Monitoring;
 using Dbr.Domain.Search;
 using Dbr.Infrastructure.Monitoring;
+using Dbr.Infrastructure.Removals;
 using Dbr.Infrastructure.Search;
 using Dbr.Search;
 using Microsoft.Extensions.Configuration;
@@ -70,6 +71,10 @@ public static class ScanDispatchServiceCollectionExtensions
         services.AddDbrReleaseMinting(configuration);
         services.AddDbrSearchRegistry(configuration);
 
+        // A finished run is evidence about the demands waiting on the companies it looked
+        // at, so completion resolves them. Registered here rather than with the removal
+        // dispatch, because this is the process that finishes runs.
+        services.AddScoped<RemovalVerification>();
         services.AddScoped<ScanCompletion>();
         services.AddScoped<IScanDispatcher, ScanDispatcher>();
 

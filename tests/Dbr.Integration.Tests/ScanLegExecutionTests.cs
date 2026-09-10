@@ -10,6 +10,7 @@ using Dbr.Domain.Vault;
 using Dbr.Infrastructure.DependencyInjection;
 using Dbr.Infrastructure.InternalEdge;
 using Dbr.Infrastructure.Monitoring;
+using Dbr.Infrastructure.Removals;
 using Dbr.Infrastructure.Tenancy;
 using Dbr.Integration.Tests.Fixtures;
 using Microsoft.Extensions.Configuration;
@@ -599,6 +600,7 @@ public class ScanLegExecutionTests(PostgresFixture postgres, OpenBaoFixture open
         services.AddSingleton<IBrokerWorkDispatcher>(_lanes);
         services.AddSingleton<IReleaseClient>(new DirectReleaseClient(RedeemAsync, ReportAsync));
 
+        services.AddScoped<RemovalVerification>();
         services.AddScoped<ScanCompletion>();
         services.AddScoped<IScanDispatcher, ScanDispatcher>();
         services.AddScoped<IBrokerWorkHandler<ScanBrokerWork>, ScanBrokerWorkHandler>();
