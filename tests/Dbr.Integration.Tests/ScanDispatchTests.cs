@@ -8,6 +8,7 @@ using Dbr.Domain.Profiles;
 using Dbr.Domain.Search;
 using Dbr.Infrastructure.DependencyInjection;
 using Dbr.Infrastructure.Monitoring;
+using Dbr.Infrastructure.Removals;
 using Dbr.Infrastructure.Tenancy;
 using Dbr.Integration.Tests.Fixtures;
 using Microsoft.Extensions.Configuration;
@@ -517,6 +518,7 @@ public class ScanDispatchTests(PostgresFixture postgres, OpenBaoFixture openBao)
         services.AddSingleton<IQueuedScanDirectory>(
             new QueuedScanDirectory(postgres.ConnectionString));
 
+        services.AddScoped<RemovalVerification>();
         services.AddScoped<ScanCompletion>();
         services.AddScoped<IScanDispatcher, ScanDispatcher>();
 

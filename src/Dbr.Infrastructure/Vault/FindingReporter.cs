@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Monitoring;
+using Dbr.Domain.Removals;
 using Dbr.Domain.Search;
 using Dbr.Domain.Vault;
 using Dbr.Infrastructure.Persistence;
@@ -144,6 +145,47 @@ public sealed class FindingReporter(
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        var digest = ExposureSourceCipher.Digest(listing.SourceRef);
+
+        // The same listing, on the same company, for the same person, already recorded and
+        // already confirmed gone. That is a reappearance rather than a new finding, and it
+        // is recognised without decrypting anything: the digest identifies a listing without
+        // being the listing, which is why it sits outside the vault beside the row.
+        //
+        // Updated rather than inserted, so the history reads as one listing that came back
+        // rather than two findings that happen to look alike — which is the difference
+        // between somebody seeing "this returned" and seeing a duplicate.
+        var returning = await core.Set<Exposure>()
+            .Where(exposure => exposure.PrivacyProfileId == grant.PrivacyProfileId
+                && exposure.BrokerId == grant.BrokerId
+                && exposure.Status == ExposureStatus.Removed
+                && exposure.SourceRefDigest == digest)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (returning is not null)
+        {
+            returning.Status = ExposureStatus.Reappeared;
+            returning.LastVerifiedAt = now;
+
+            // And the demand that had been confirmed, so the two do not disagree. Whether a
+            // fresh demand is opened is a decision about consent and belongs where demands
+            // are made, not here — this records that the thing came back.
+            var confirmed = await core.Set<RemovalRequest>()
+                .Where(request => request.PrivacyProfileId == grant.PrivacyProfileId
+                    && request.BrokerId == grant.BrokerId
+                    && request.Status == RemovalRequestStatus.Removed)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var request in confirmed)
+            {
+                request.Status = RemovalRequestStatus.Reappeared;
+            }
+
+            return;
+        }
+
         var exposureId = Guid.NewGuid();
 
         // A data key per finding rather than one shared across an account's findings.
@@ -182,7 +224,7 @@ public sealed class FindingReporter(
             Status = ExposureStatus.New,
             Confidence = confidence,
             DiscoveredAt = now,
-            SourceRefDigest = ExposureSourceCipher.Digest(listing.SourceRef),
+            SourceRefDigest = digest,
         });
     }
 }

@@ -3,6 +3,7 @@
 
 using Dbr.Domain.Monitoring;
 using Dbr.Infrastructure.Persistence;
+using Dbr.Infrastructure.Removals;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dbr.Infrastructure.Monitoring;
@@ -30,7 +31,10 @@ namespace Dbr.Infrastructure.Monitoring;
 /// another way to answer the question.
 /// </para>
 /// </remarks>
-public sealed class ScanCompletion(DbrDbContext core, TimeProvider clock)
+public sealed class ScanCompletion(
+    DbrDbContext core,
+    TimeProvider clock,
+    RemovalVerification verification)
 {
     /// <summary>
     /// Ends the run if every leg has finished, and does nothing if any has not.
@@ -79,6 +83,18 @@ public sealed class ScanCompletion(DbrDbContext core, TimeProvider clock)
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return moved == 1 ? status : null;
+        if (moved != 1)
+        {
+            return null;
+        }
+
+        // Exactly once per run, because the update above is conditional on it still being
+        // under way. A run that has finished is evidence about every demand waiting on the
+        // companies it looked at, and this is the only moment that evidence is complete —
+        // resolving per leg would settle a demand on one company's answer while another was
+        // still being asked.
+        await verification.ResolveAsync(scanId, cancellationToken).ConfigureAwait(false);
+
+        return status;
     }
 }
