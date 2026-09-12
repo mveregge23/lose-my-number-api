@@ -17,8 +17,14 @@
 #
 # There is no `statuteCode` and no `citationUrl` here, and the reader refuses either one
 # without the other — the same rule the connector contract holds a demand to.
+#
+# Filed under both rights, like the statutory wording, and for the same reason: the body
+# below already asks for deletion and for an end to sale, so a demand opened as either one
+# should send it.
 
-requestType: delete
+requestTypes:
+  - delete
+  - opt_out_sale
 
 reviewedAt: 2026-09-08
 reviewedBy: "@mveregge23"

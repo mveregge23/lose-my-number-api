@@ -189,7 +189,9 @@ public class LineOneAcceptanceTests(PostgresFixture postgres, OpenBaoFixture ope
 
         Assert.Equal($"privacy@{BrokerDomain}", Assert.Single(sent.Recipients));
         Assert.Equal($"removals-{work.RemovalJobId:D}@{MailDomain}", sent.From);
-        Assert.Equal("Request to delete personal information (CCPA)", sent.Header("Subject"));
+        Assert.Equal(
+            "Request to delete personal information and opt out of its sale (CCPA)",
+            sent.Header("Subject"));
 
         // The identity reached the message, which means the grant was minted, spent, and
         // decrypted the groups the wording names — the whole vault path, observed from the
@@ -198,6 +200,10 @@ public class LineOneAcceptanceTests(PostgresFixture postgres, OpenBaoFixture ope
         Assert.Contains("12 Rowan Lane", sent.Body, StringComparison.Ordinal);
         Assert.Contains("alex@example.test", sent.Body, StringComparison.Ordinal);
         Assert.Contains("1798.105", sent.Body, StringComparison.Ordinal);
+
+        // Both rights in the one message. A company that deletes today and re-acquires the
+        // same record next month has honoured the first and not the second.
+        Assert.Contains("1798.120", sent.Body, StringComparison.Ordinal);
 
         // And what it did not receive. The wording names no date of birth, so nothing
         // decrypted one — the declaration and the release agreeing, end to end.
