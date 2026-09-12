@@ -212,20 +212,26 @@ left to be discovered, and it is the thing to fix first if this is ever run anyw
 
 ---
 
-## Verification scans are also unbuilt
+## A listing that comes back does not reopen a demand
 
-**Required by:** §5's lifecycle has two transitions that only a scan can drive —
-`AwaitingBrokerResponse → Removed` when a verification scan confirms a listing is gone, and
-`Removed → Reappeared` when a later one finds it again. The second is the reason the design insists
-removal is not fire-and-forget: brokers re-buy and re-scrape.
+**Required by:** §5's lifecycle draws `Reappeared → Queued` for a listing found again after a
+removal, gated on the tenant currently permitting `auto_resubmit` — the consent scope exists for
+exactly this, and nothing else. The design insists removal is not fire-and-forget because brokers
+re-buy and re-scrape; noticing the return is half of that, acting on it is the other half.
 
-**Today:** neither transition has anything behind it. Without them a removal request can never reach
-a terminal success state on evidence, and a listing that comes back is never noticed.
+**Today:** the first half is built. A finished scan settles the demands waiting on the companies
+it looked at: a listing found gone closes the demand as `removed`, a listing still present after
+the deadline closes it as `failed`, and a listing that reappears is recognised by the digest stored
+beside the finding and moves the demand to `reappeared`. There it stops. Nothing opens a fresh
+demand, so `auto_resubmit` is a permission somebody can grant that no code path consults.
 
-**What closing it involves, roughly:** the same worker as the gap above, pointed at an exposure that
-already exists rather than at a fresh search, plus a decision about how long after a submission the
-first verification is worth running — which §9's `Success(ReceiptRef, VerifyNotBefore)` already
-anticipates a connector answering.
+**What closing it involves, roughly:** the transition is `Reappeared → Queued` on the same row —
+the demand is the thing that is retried, waited on and resubmitted, which is why a listing that
+comes back returns to it rather than opening a second one. Re-queueing is the dispatcher's
+business, not the verifier's: the path that records what a search saw should not also be the one
+that puts a name in front of a company. So it is a small consumer of the reappearance, in the same
+place the monthly scan already acts without a caller — re-read consent per run, refuse without it,
+and move the demand back to `queued` so the lane picks it up as a fresh attempt.
 
 ---
 
