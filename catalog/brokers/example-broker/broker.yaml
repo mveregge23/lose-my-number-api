@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# The reference company. The worked example, and the file a contributor copies to add a
+# real one.
+#
+# A company is a directory of three documents, and this is the one the other two bind to:
+# search.yaml says how to ask the company what it holds, email.yaml says where it takes a
+# demand, and both name this row by id. The catalog sync turns this file into the row
+# every scan and demand resolves against, applies it on every deploy, and takes it back
+# out — deactivated, never deleted, because history points at it — when the file goes.
+#
+# This particular file is never applied. Its domain is under a name the internet reserves
+# for examples, and the sync treats any such company as a worked example: read and
+# validated like the rest, so it cannot drift from the schema, and reported rather than
+# written, so no instance ever paces a lane for a company that does not exist or sends a
+# demand to example.com. A real company's file looks exactly like this with a real domain.
+
+# Assigned here, once, and never changed. Recipes bind to it, lanes are named after it,
+# and every scan and demand records it — a domain can be corrected, an id cannot be.
+id: 2f6b1c48-9d3a-4e57-b8a1-0c5e7f9d24b3
+
+name: Example Broker
+
+# A bare host and nothing else. The search recipe writes a path and the mailbox recipe
+# writes a local part, and both are completed from this one line — which is what keeps a
+# reviewed document from sending somebody's name and address anywhere but here.
+domain: example-broker.example
+
+# webform, email, api or postal. A company that takes demands by mail needs an email.yaml
+# beside this file, or the sync refuses: a demand to it would be accepted and never sent.
+removalMethod: email
+
+# The courtesy target, in days, when no statute governs a request. A request records
+# which kind of deadline it got, so this is never mistaken for a legal one.
+slaDays: 45
+
+# Optional. alias_preferred (the default) if the company will correspond at an address
+# made for the purpose; tenant_real_required if it insists on the one it already holds.
+emailContactMode: alias_preferred
+
+# Optional, true by default. false is the catalog saying the company has closed or
+# merged: the row stays for the history that names it, and nothing new is sent.
+# active: true
+
+# Optional, as a block and per field. Anything left out takes the slowest lane there is,
+# which is the right default for a company added without thinking about it: the failure
+# mode of guessing high is this service looking like something worth blocking.
+pacing:
+  maxConcurrency: 1
+  minDelayMs: 1000
+  rateLimitThreshold: 3
+  cooldownMinutes: 30
+  formChangeThreshold: 3
+
+# Where the domain, method and target were read. Required, and not stored: the file's
+# history is the record, and this is what a reviewer follows to check the row.
+sourceUrl: https://example-broker.example/privacy

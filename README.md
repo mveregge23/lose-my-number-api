@@ -540,6 +540,44 @@ Three things worth knowing before you edit one:
 - **Your own rows are yours.** Anything inserted by hand defaults to `source = 'local'`. To take a
   shipped row over permanently, set its source to `local` and the sync leaves it alone from then on.
 
+Companies live in [`catalog/brokers/`](catalog/brokers/), one directory each, and the same sync
+applies them in the same transaction. A company is three documents that bind to one id:
+
+```
+catalog/brokers/<company>/broker.yaml   ->  the row: id, name, domain, method, target, pacing
+catalog/brokers/<company>/search.yaml   ->  how to ask the company what it holds  (optional)
+catalog/brokers/<company>/email.yaml    ->  which mailbox it takes a demand at     (required if the method is email)
+```
+
+[`catalog/brokers/example-broker/broker.yaml`](catalog/brokers/example-broker/broker.yaml) is the
+worked example and is written to be copied. The rules that differ from the regimes:
+
+- **The id is assigned in the file and never changes.** The recipes beside it name it, lanes are
+  named after it, and every scan and demand records it. A domain can be corrected — companies rename
+  — and everything that points at the company keeps pointing at it. The sync updates on the id, and
+  `--check` refuses a recipe whose `brokerId` is not the id of the `broker.yaml` beside it, which is
+  the mistake a reviewer comparing two uuids by eye would miss.
+- **Deleting a file deactivates the row rather than removing it.** Every scan that asked the company,
+  every finding on its site and every demand sent to it holds a key to the row, and none of those
+  keys cascade — a demand somebody sent is history, and it has to keep naming the company it went
+  to. So the row stays with `active = false`, stops being searched, paced or sent to, and a file that
+  comes back reactivates it under the same id. A file can also say `active: false` itself, which is
+  the catalog's way of recording that a company closed or merged.
+- **The file is the whole row, pacing included.** Pacing is the thing an operator is most likely to
+  tune by hand, and a tuned catalog row is tuned back on the next deploy. To keep a change, take the
+  row over (`source = 'local'`); the sync then leaves the whole company alone and says so every run.
+  A sync that wrote some columns and not others would make "which of these did the catalog set" a
+  question with a different answer per column.
+- **A company under a reserved domain is a worked example, never applied.** `.example`, `.test`,
+  `.invalid`, `.localhost` and `example.com/net/org` are reserved by the internet for exactly this,
+  so nothing under them can be a company. The example is read and validated with the rest — a
+  template that has drifted from the schema teaches the wrong shape — and reported rather than
+  written, so no instance paces a lane for a company that does not exist.
+- **The one-approval bar, and lighter provenance to match.** A statute row decides what somebody is
+  told about their legal position and carries a citation and a reviewer. A company row is public
+  fact about a company; it carries `sourceUrl` — where the domain and method were read — which is
+  validated and not stored, because the file's own history is the record.
+
 `dotnet run --project src/Dbr.CatalogSync -- --check` reads and validates the files without touching
 a database; CI runs exactly that on every pull request, so a malformed file fails review rather than
 a deploy.

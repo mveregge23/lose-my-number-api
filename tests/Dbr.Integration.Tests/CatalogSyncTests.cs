@@ -135,7 +135,7 @@ public class CatalogSyncTests(PostgresFixture postgres) : IAsyncLifetime
                  WHERE b.domain = '{domain}' AND l.code = '{Managed}';
              """);
 
-        await Assert.ThrowsAsync<CatalogRetractionBlockedException>(() => RunAsync([]));
+        await Assert.ThrowsAsync<CatalogSyncRefusedException>(() => RunAsync([]));
 
         // And nothing was half-applied: the whole run is one transaction.
         Assert.Equal(1, await CountAsync(Managed));
@@ -169,8 +169,10 @@ public class CatalogSyncTests(PostgresFixture postgres) : IAsyncLifetime
     {
         var shipped = CatalogReader.Read(typeof(CatalogRow).Assembly).Rows;
 
+        // No companies: these tests are about regimes, and the shipped catalog applies
+        // none, so an empty list here retracts nothing that exists.
         return await new CatalogSyncRunner(postgres.ConnectionString)
-            .RunAsync([.. shipped, .. rows], TestContext.Current.CancellationToken);
+            .RunAsync([.. shipped, .. rows], [], TestContext.Current.CancellationToken);
     }
 
     private async Task<long> CountAsync(string code) =>

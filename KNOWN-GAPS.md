@@ -90,30 +90,6 @@ not: it tells the broker exactly who is asking, which is a disclosure to weigh r
 
 ---
 
-## Brokers are not synced from files yet
-
-**Required by:** the design puts broker recipes in `/catalog/brokers/*.yaml` alongside legal-basis
-content, and `.github/CODEOWNERS` already reserves that path at the one-approval tier — a lower bar
-than legal content, because a bad recipe fails one broker's jobs while a bad statute misinforms
-somebody about their rights.
-
-**Today:** `catalog-sync` reads `catalog/legal-basis/**` and nothing else. Broker rows are still
-inserted by hand or by migration, and `broker` has no `source` column, so nothing distinguishes a
-row the shared catalog would own from one an operator entered.
-
-**What closing it involves, roughly:** the mechanism is built and the shape is the same — a file
-schema, a validator, `source` on the table, and the same upsert-and-retract pass. Two things differ.
-A broker's pacing fields are exactly the kind of thing an operator may want to tune locally, so the
-all-or-nothing ownership that suits a statute may be too coarse here. And `broker_legal_basis` — the
-confirmations that a regime governs a company — is curated content too, currently modelled nowhere
-in the files; it is what makes retracting a regime fail today, so whichever story adds it should
-decide whether a confirmation lives in the broker's file, the regime's, or its own.
-
-This was left out deliberately rather than missed: no broker rows ship at all, so a sync for them
-would have had no content to apply and nothing to test against beyond fixtures.
-
----
-
 ## The catalog has no companies in it
 
 **Required by:** §6.3 makes the broker catalog the reference data every scan and removal request
@@ -121,9 +97,10 @@ resolves against, and §9.1 expects it to reach the hundreds. `broker` is where 
 opt-out method, courtesy SLA and pacing live, and `broker_legal_basis` is where somebody records
 that a given statute reaches a given company.
 
-**Today:** both tables are empty, and nothing fills them. There is no `catalog/brokers/` directory,
-no migration inserts a broker row, and `catalog-sync` reads legal-basis content only. Fifteen
-legal-basis rows ship; zero companies do.
+**Today:** both tables are empty. The way to fill the first now exists — a company is a
+`broker.yaml` under `catalog/brokers/<company>/`, applied by `catalog-sync` on every deploy and
+deactivated when its file goes — and the only directory there is the worked example, which is
+under a reserved domain and is never applied. Fifteen legal-basis rows ship; zero companies do.
 
 This is worth spelling out because the rest of the system looks finished around it. Concretely:
 
@@ -136,14 +113,14 @@ This is worth spelling out because the rest of the system looks finished around 
   operational default, so **no statutory deadline is reachable at all** however many jurisdictions
   get seeded. The deadline machinery is complete and permanently on its fallback path.
 
-**What closing it involves, roughly:** three separate kinds of work. A broker sync — file schema,
-validator, a `source` column on `broker`, and the same upsert-and-retract pass legal-basis content
-gets, with the wrinkle that pacing fields are what an operator would most want to tune locally, so
-all-or-nothing ownership may be too coarse. A decision about where a `broker_legal_basis`
-confirmation lives — the broker's file, the regime's, or its own — which is what makes retracting a
-regime fail today. And then the content itself: domain, removal method, opt-out URL, SLA, contact
-mode and pacing, read off real sites and cited, which is research rather than programming and is the
-long pole.
+**What closing it involves, roughly:** two kinds of work, now that the sync exists. A way to
+say in a company's file which statutes reach it — `broker_legal_basis` is still filled by nobody,
+and it is what makes a statutory deadline reachable at all. The confirmation belongs in the
+company's file rather than the regime's, because it is a fact about the company, and a state's
+data-broker registry is a primary source for it: a company on California's registry is subject to
+the CCPA by definition. And then the content itself: domain, removal method, mailbox or opt-out
+URL, target and pacing, read off real sites and cited, which is research rather than programming
+and is the long pole.
 
 Fixtures stand in for a company in tests, so this does not block building the search or the
 connectors. It blocks anything running against a real one.
@@ -164,11 +141,11 @@ listing agreed with, and the whole of it is exercised on every pull request agai
 
 **All of that runs against one company, and that company is invented.** `example-broker` exists to
 prove the machinery and to be the worked example; it serves no real listings because it serves
-nothing at all. No real company has a recipe, for the plainer reason recorded below: no real company
+nothing at all. No real company has a recipe, for the plainer reason recorded above: no real company
 is in the catalog. A scan of a live instance today reaches every entry it has and finishes
 `no_search_available` on all of them.
 
-**What closing it involves, roughly:** the catalog content — see the entry below — and a recipe
+**What closing it involves, roughly:** the catalog content — see the entry above — and a recipe
 beside each company's recorded pages. That is research and reviewing rather than engineering: read
 a site, write down the query it takes and the selectors its results use, record the pages that prove
 it, open a pull request. The dry-run in `Dbr.Search.Tests` checks the result, so a recipe arrives
@@ -181,7 +158,7 @@ at dispatch when it does.
 
 **Worth being blunt about:** the scan pipeline is real, tested end to end, and finds nothing on a
 real deployment. Do not read a completed scan with no findings as good news until this entry and the
-one below it are gone.
+one above it are gone.
 
 ---
 
@@ -244,17 +221,18 @@ verification window has passed, there is nothing left to point at and the addres
 **Today:** the address is stored, encrypted, in `vault.exposure_source`, and nothing deletes it. It
 outlives the removal it justified.
 
-Two things soften it and neither closes it. Destroying a tenant's wrapping key on account deletion
+One thing softens it and does not close it. Destroying a tenant's wrapping key on account deletion
 makes every one of their findings permanently unreadable, including in backups — so **erasure works**
-and it is retention that does not. And the state the purge triggers on cannot be reached yet:
-nothing drives an exposure to `removed`, because verification scans are the entry above this one.
+and it is retention that does not. The state the purge triggers on is reachable now: a finished scan
+that finds nothing for a person at a company moves that company's findings to `removed`.
 
 **What closing it involves, roughly:** a sweep over exposures that are `removed` with a verification
 window behind them, deleting the vault row and leaving the finding's history — which is the point,
-since the history is what stops a later scan re-offering the same listing as a fresh discovery. It
-is deliberately not built yet: with nothing able to reach `removed`, a purge would be written
-against a state no row has ever held, which is the same objection recorded against building the
-scoped release early.
+since the history is what stops a later scan re-offering the same listing as a fresh discovery. The
+one decision it needs is how long that window is: a listing confirmed gone last week may come back
+next month, and the digest that recognises its return lives beside the finding rather than in the
+vault, so the purge does not cost that recognition. What it does cost is the ability to show the
+person where it *was*, which is the trade the minimization rule asks for.
 
 ---
 

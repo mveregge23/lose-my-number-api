@@ -34,6 +34,11 @@ internal sealed class BrokerConfiguration : IEntityTypeConfiguration<Broker>
                 mode => CatalogVocabulary.ToWire(mode),
                 stored => ContactModeFromStorage(stored));
 
+        builder.Property(broker => broker.Source)
+            .HasConversion(
+                source => CatalogVocabulary.ToWire(source),
+                stored => SourceFromStorage(stored));
+
         // The unique index on domain and the partial index on active are not declared.
         // EF generates no DDL here, so a declaration would only be a claim about the
         // database — and the partial one is a claim EF cannot express correctly anyway.
@@ -43,6 +48,13 @@ internal sealed class BrokerConfiguration : IEntityTypeConfiguration<Broker>
         CatalogVocabulary.ParseRemovalMethod(stored)
         ?? throw new InvalidOperationException(
             $"broker.removal_method holds '{stored}', which this build has no value for. "
+            + "Either a migration widened the check constraint ahead of the code, or a row "
+            + "was written by hand.");
+
+    private static CatalogSource SourceFromStorage(string stored) =>
+        CatalogVocabulary.ParseCatalogSource(stored)
+        ?? throw new InvalidOperationException(
+            $"broker.source holds '{stored}', which this build has no value for. "
             + "Either a migration widened the check constraint ahead of the code, or a row "
             + "was written by hand.");
 

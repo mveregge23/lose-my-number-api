@@ -38,6 +38,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
          what the reader matches on. -->
     <EmbeddedResource Include="..\..\catalog\legal-basis\*.yaml"
                       LogicalName="legal-basis.%(Filename)%(Extension)" />
+
+    <!-- A company is a directory: its row, and the recipes that bind to it. The row is
+         what gets applied; the recipes are embedded only so the reader can check that
+         the company they name is the company they sit beside, which nothing else can
+         see. The recipes' contents are read by the engines that run them, from a
+         checkout — see Dbr.Search and Dbr.Removals. -->
+    <EmbeddedResource Include="..\..\catalog\brokers\**\broker.yaml;..\..\catalog\brokers\**\search.yaml;..\..\catalog\brokers\**\email.yaml"
+                      LogicalName="brokers.%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

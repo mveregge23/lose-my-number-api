@@ -14,21 +14,32 @@ using Dbr.CatalogSync;
 var check = args.Contains("--check", StringComparer.Ordinal);
 
 var catalog = CatalogReader.Read(Assembly.GetExecutingAssembly());
+var brokers = BrokerReader.Read(Assembly.GetExecutingAssembly());
 
-foreach (var problem in catalog.Problems)
+var problems = catalog.Problems.Concat(brokers.Problems).ToList();
+
+foreach (var problem in problems)
 {
     await Console.Error.WriteLineAsync(problem).ConfigureAwait(false);
 }
 
-if (catalog.Problems.Count > 0)
+if (problems.Count > 0)
 {
     await Console.Error.WriteLineAsync(
-        $"{catalog.Problems.Count} problem(s) in the catalog. Nothing was applied.").ConfigureAwait(false);
+        $"{problems.Count} problem(s) in the catalog. Nothing was applied.").ConfigureAwait(false);
 
     return 1;
 }
 
 Console.Out.WriteLine($"{catalog.Rows.Count} legal-basis rows read from the catalog.");
+Console.Out.WriteLine($"{brokers.Rows.Count} companies read from the catalog.");
+
+foreach (var example in brokers.WorkedExamples)
+{
+    // Validated with the rest so the example cannot drift from the schema, and never
+    // applied so no instance ever paces a lane for a company that does not exist.
+    Console.Out.WriteLine($"Worked example, not applied: {example}");
+}
 
 if (check)
 {
@@ -55,11 +66,12 @@ if (string.IsNullOrWhiteSpace(connectionString))
 try
 {
     var result = await new CatalogSyncRunner(connectionString)
-        .RunAsync(catalog.Rows)
+        .RunAsync(catalog.Rows, brokers.Rows)
         .ConfigureAwait(false);
 
     Console.Out.WriteLine(
-        $"Catalog applied: {result.Applied} row(s) written, {result.Retracted} retracted.");
+        $"Catalog applied: {result.Applied} legal-basis row(s) written, {result.Retracted} retracted; "
+        + $"{result.BrokersApplied} compan(ies) written, {result.BrokersRetracted} deactivated.");
 
     foreach (var claimed in result.LeftAlone)
     {
@@ -71,7 +83,7 @@ try
 
     return 0;
 }
-catch (CatalogRetractionBlockedException blocked)
+catch (CatalogSyncRefusedException blocked)
 {
     await Console.Error.WriteLineAsync(blocked.Message).ConfigureAwait(false);
 
