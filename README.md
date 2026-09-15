@@ -534,9 +534,9 @@ Three things worth knowing before you edit one:
   content. It reports what it left alone rather than silently skipping it.
 - **Deleting a file retracts the row.** That is the point of the split: a regime read wrongly and
   corrected stops governing requests on the next deploy, instead of lingering until somebody runs a
-  `DELETE` on every install. If brokers are still confirmed against the regime, the retraction is
-  refused with an explanation — those confirmations are a reviewed judgement and the schema will not
-  drop them as a side effect.
+  `DELETE` on every install. If a confirmation *you* made still points at the regime, the retraction
+  is refused with an explanation — that is a reviewed judgement and the schema will not drop it as a
+  side effect. The catalog's own confirmations go with the file that made them.
 - **Your own rows are yours.** Anything inserted by hand defaults to `source = 'local'`. To take a
   shipped row over permanently, set its source to `local` and the sync leaves it alone from then on.
 
@@ -577,6 +577,18 @@ worked example and is written to be copied. The rules that differ from the regim
   told about their legal position and carries a citation and a reviewer. A company row is public
   fact about a company; it carries `sourceUrl` — where the domain and method were read — which is
   validated and not stored, because the file's own history is the record.
+- **Which statutes reach the company is in the same file, at the heavier bar.** A `subjectTo` entry
+  names a regime from `catalog/legal-basis/` and carries `evidenceUrl`, `confirmedBy` and
+  `confirmedAt`, all three required and all three stored and published — this decides which
+  deadline somebody is told they have recourse over, so it is held to what a regime is held to.
+  It is named by regime, not by request type: a statute that reaches a company reaches it for every
+  kind of demand it grants, and the sync writes one `broker_legal_basis` row per row the regime
+  has. A state's data-broker registry is the usual evidence: a company on California's registry has
+  declared itself a data broker under the CCPA, which is the applicability judgement no code is
+  allowed to infer, now citable. A company with no `subjectTo` at all is fine — it gets its
+  courtesy target on every request, honestly labelled as one. Confirmations you enter yourself are
+  left alone and never retracted, and once you take a company over, the catalog's confirmations
+  against it stay exactly as they are.
 
 `dotnet run --project src/Dbr.CatalogSync -- --check` reads and validates the files without touching
 a database; CI runs exactly that on every pull request, so a malformed file fails review rather than

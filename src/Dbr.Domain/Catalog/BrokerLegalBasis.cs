@@ -30,4 +30,17 @@ public class BrokerLegalBasis
 
     /// <summary>Who confirmed it, which is the whole value of the row.</summary>
     public required string ConfirmedBy { get; set; }
+
+    /// <summary>
+    /// Where it was read that the regime reaches this company — a registry entry, or the
+    /// company's own notice. Required of a catalog confirmation, which is a claim shipped
+    /// to every instance; optional for an operator's own, which already carries a name.
+    /// </summary>
+    public string? EvidenceUrl { get; set; }
+
+    /// <summary>
+    /// Whether the catalog wrote this from the company's file, or an operator did. The
+    /// sync updates and removes its own to match the file and never touches the other.
+    /// </summary>
+    public CatalogSource Source { get; set; } = CatalogSource.Local;
 }

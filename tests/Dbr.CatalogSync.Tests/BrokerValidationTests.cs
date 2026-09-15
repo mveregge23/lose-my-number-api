@@ -46,7 +46,7 @@ public class BrokerValidationTests
         """;
 
     private static BrokerReadResult Read(params (string Path, string Yaml)[] files) =>
-        BrokerReader.Read(files);
+        BrokerReader.Read(files, new HashSet<string>(StringComparer.Ordinal) { "CCPA", "VCDPA" });
 
     [Fact]
     public void A_well_formed_company_produces_its_row_with_the_slowest_pacing()
@@ -258,5 +258,90 @@ public class BrokerValidationTests
             ("some-company/email.yaml", Mailbox));
 
         Assert.Equal(3, read.Problems.Count);
+    }
+
+    private const string SubjectToCcpa = """
+
+        subjectTo:
+          - regime: CCPA
+            evidenceUrl: https://registry.example/data-brokers/some-company
+            confirmedBy: "@somebody"
+            confirmedAt: 2026-09-15
+        """;
+
+    [Fact]
+    public void A_confirmed_regime_rides_on_the_row()
+    {
+        var read = Read(("some-company/broker.yaml", Row + SubjectToCcpa), ("some-company/email.yaml", Mailbox));
+
+        Assert.Empty(read.Problems);
+        var confirmation = Assert.Single(Assert.Single(read.Rows).SubjectTo);
+        Assert.Equal("CCPA", confirmation.Regime);
+        Assert.Equal("@somebody", confirmation.ConfirmedBy);
+        Assert.Equal(new DateTimeOffset(2026, 9, 15, 0, 0, 0, TimeSpan.Zero), confirmation.ConfirmedAt);
+    }
+
+    [Fact]
+    public void A_company_with_no_confirmed_regime_is_fine()
+    {
+        // The safe absence: it falls back to its courtesy target, honestly labelled.
+        var read = Read(("some-company/broker.yaml", Row), ("some-company/email.yaml", Mailbox));
+
+        Assert.Empty(read.Problems);
+        Assert.Empty(Assert.Single(read.Rows).SubjectTo);
+    }
+
+    [Fact]
+    public void A_regime_no_file_defines_is_refused()
+    {
+        // The check nothing else can make. "GDPR" is a real law and a plausible line in
+        // a diff; it is also a code no regime file carries, so the confirmation would be
+        // about nothing and the file would read as complete.
+        var read = Read(
+            ("some-company/broker.yaml", Row + SubjectToCcpa.Replace("CCPA", "GDPR", StringComparison.Ordinal)),
+            ("some-company/email.yaml", Mailbox));
+
+        Assert.Empty(read.Rows);
+        var problem = Assert.Single(read.Problems);
+        Assert.Contains("GDPR", problem, StringComparison.Ordinal);
+        Assert.Contains("catalog/legal-basis/", problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_confirmation_without_evidence_is_refused()
+    {
+        // Held to the regime's bar, not the row's: this decides which deadline somebody
+        // is told they have recourse over.
+        var read = Read(
+            ("some-company/broker.yaml", Row + SubjectToCcpa.Replace(
+                "evidenceUrl: https://registry.example/data-brokers/some-company",
+                "evidenceUrl: the registry",
+                StringComparison.Ordinal)),
+            ("some-company/email.yaml", Mailbox));
+
+        Assert.Empty(read.Rows);
+        Assert.Contains(read.Problems, problem => problem.Contains("evidenceUrl", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_confirmation_with_nobody_behind_it_is_refused()
+    {
+        var read = Read(
+            ("some-company/broker.yaml", Row + SubjectToCcpa.Replace("confirmedBy: \"@somebody\"", "confirmedBy: \"\"", StringComparison.Ordinal)),
+            ("some-company/email.yaml", Mailbox));
+
+        Assert.Empty(read.Rows);
+        Assert.Contains(read.Problems, problem => problem.Contains("confirmedBy", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_same_regime_confirmed_twice_is_refused()
+    {
+        var read = Read(
+            ("some-company/broker.yaml", Row + SubjectToCcpa + SubjectToCcpa.Replace("subjectTo:\n", string.Empty, StringComparison.Ordinal)),
+            ("some-company/email.yaml", Mailbox));
+
+        Assert.Empty(read.Rows);
+        Assert.Contains(read.Problems, problem => problem.Contains("more than once", StringComparison.Ordinal));
     }
 }

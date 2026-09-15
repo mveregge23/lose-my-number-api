@@ -80,7 +80,11 @@ public sealed class CatalogService(DbrDbContext core) : ICatalogService
                 on confirmation.LegalBasisId equals basis.Id
             where confirmation.BrokerId == brokerId
             orderby basis.Code, basis.ResidencyScope, basis.RequestType
-            select new ConfirmedRegime(basis, confirmation.ConfirmedAt, confirmation.ConfirmedBy))
+            select new ConfirmedRegime(
+                basis,
+                confirmation.ConfirmedAt,
+                confirmation.ConfirmedBy,
+                confirmation.EvidenceUrl))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 

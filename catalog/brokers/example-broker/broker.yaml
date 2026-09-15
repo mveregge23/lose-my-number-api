@@ -56,3 +56,19 @@ pacing:
 # Where the domain, method and target were read. Required, and not stored: the file's
 # history is the record, and this is what a reviewer follows to check the row.
 sourceUrl: https://example-broker.example/privacy
+
+# Which regimes reach this company — the judgement no code is allowed to make, written
+# where a reviewer can check it. Optional as a list: a company with none gets its courtesy
+# target on every request, honestly labelled as one, which is the safe absence.
+#
+# Named by regime, not by request type: a statute that reaches a company reaches it for
+# every kind of demand it grants, and the sync writes one confirmation per row the regime
+# has. Held to the bar the regime files are held to, because this decides which deadline
+# somebody is told they have recourse over: a citation, a person, a date, all stored and
+# all published. A state's data-broker registry is the usual evidence — a company on
+# California's registry has declared itself a data broker under the CCPA.
+subjectTo:
+  - regime: CCPA
+    evidenceUrl: https://registry.example/data-brokers/example-broker
+    confirmedBy: "@mveregge23"
+    confirmedAt: 2026-09-15

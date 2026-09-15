@@ -19,22 +19,37 @@ namespace Dbr.CatalogSync;
 /// Company rows deactivated because no file describes them any more. Deactivated rather
 /// than removed: see <see cref="CatalogSyncRunner.RetractBrokersAsync"/>.
 /// </param>
+/// <param name="ConfirmationsApplied">
+/// Confirmations that a regime reaches a company, inserted or brought up to date — one
+/// per row the regime has, since a file names a regime and a regime is several rows.
+/// </param>
+/// <param name="ConfirmationsRetracted">Confirmations removed because no file makes them any more.</param>
 public sealed record CatalogSyncResult(
     int Applied,
     int Retracted,
     IReadOnlyList<string> LeftAlone,
     int BrokersApplied,
-    int BrokersRetracted);
+    int BrokersRetracted,
+    int ConfirmationsApplied,
+    int ConfirmationsRetracted);
 
 /// <summary>
 /// Applies the curated legal-basis and company files to the database.
 /// </summary>
 /// <remarks>
 /// <para>
-/// One transaction, for regimes and companies together. A sync that inserted half its
-/// files and then hit a retraction it could not perform would leave the catalog describing
-/// a state no file does, and the next deploy would be reconciling from somewhere nobody
-/// chose. Regimes go first, because a company's confirmations will point at them.
+/// One transaction, for regimes, companies and the confirmations joining them. A sync that
+/// inserted half its files and then hit a retraction it could not perform would leave the
+/// catalog describing a state no file does, and the next deploy would be reconciling from
+/// somewhere nobody chose.
+/// </para>
+/// <para>
+/// <b>Applied in dependency order, retracted in reverse.</b> Regimes and companies are
+/// written first because a confirmation points at both; confirmations are taken back
+/// first because a regime with confirmations against it refuses to go. So a regime
+/// leaving the files together with every company's claim on it is one clean run, while a
+/// regime leaving the files with an <i>operator's</i> confirmation still against it is
+/// refused exactly as before — that confirmation was never the sync's to remove.
 /// </para>
 /// <para>
 /// <b>It only ever touches rows it owns.</b> Every write is conditioned on
@@ -76,30 +91,54 @@ public sealed class CatalogSyncRunner(string connectionString)
             applied += await ApplyAsync(connection, row, cancellationToken).ConfigureAwait(false);
         }
 
-        var retracted = await RetractAsync(connection, rows, cancellationToken).ConfigureAwait(false);
-
         var brokersClaimed = await BrokersLeftAloneAsync(connection, brokers, cancellationToken)
             .ConfigureAwait(false);
 
+        // A company the operator holds is theirs entirely, confirmations included: the
+        // catalog's claims about a company it does not own would be claims about a row
+        // whose recipes, pacing and method it also does not control.
+        var applicable = brokers.Where(broker => !brokersClaimed.ContainsKey(broker.Id)).ToList();
+
         var brokersApplied = 0;
 
-        foreach (var broker in brokers.Where(broker => !brokersClaimed.ContainsKey(broker.Id)))
+        foreach (var broker in applicable)
         {
             brokersApplied += await ApplyBrokerAsync(connection, broker, cancellationToken)
                 .ConfigureAwait(false);
         }
 
+        var confirmationsClaimed = await ConfirmationsLeftAloneAsync(connection, applicable, cancellationToken)
+            .ConfigureAwait(false);
+
+        var confirmationsApplied = 0;
+
+        foreach (var broker in applicable)
+        {
+            foreach (var confirmation in broker.SubjectTo)
+            {
+                confirmationsApplied += await ApplyConfirmationAsync(connection, broker.Id, confirmation, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        var confirmationsRetracted = await RetractConfirmationsAsync(connection, applicable, cancellationToken)
+            .ConfigureAwait(false);
+
         var brokersRetracted = await RetractBrokersAsync(connection, brokers, cancellationToken)
             .ConfigureAwait(false);
+
+        var retracted = await RetractAsync(connection, rows, cancellationToken).ConfigureAwait(false);
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
         return new CatalogSyncResult(
             applied,
             retracted,
-            [.. leftAlone, .. brokersClaimed.Values],
+            [.. leftAlone, .. brokersClaimed.Values, .. confirmationsClaimed],
             brokersApplied,
-            brokersRetracted);
+            brokersRetracted,
+            confirmationsApplied,
+            confirmationsRetracted);
     }
 
     /// <summary>Rows a file describes that this instance has taken ownership of.</summary>
@@ -187,10 +226,11 @@ public sealed class CatalogSyncRunner(string connectionString)
     /// pulled the bad content.
     /// </remarks>
     /// <exception cref="CatalogSyncRefusedException">
-    /// Brokers are still confirmed against the regime being retracted. The schema refuses
-    /// that deletion deliberately, because the confirmations are somebody's reviewed
-    /// judgement that the statute applies and losing them silently is how a removal
-    /// quietly downgrades to a courtesy deadline.
+    /// An operator's own confirmation still points at the regime being retracted. The
+    /// catalog's confirmations were taken back before this ran, so anything left is
+    /// somebody's reviewed judgement that the statute applies, and the schema refuses to
+    /// drop it as a side effect — losing it silently is how a removal quietly downgrades
+    /// to a courtesy deadline.
     /// </exception>
     private static async Task<int> RetractAsync(
         NpgsqlConnection connection,
@@ -220,12 +260,130 @@ public sealed class CatalogSyncRunner(string connectionString)
             when (refused.SqlState == PostgresErrorCodes.ForeignKeyViolation)
         {
             throw new CatalogSyncRefusedException(
-                "A regime being retracted still has brokers confirmed against it. Those "
-                + "confirmations are a reviewed judgement that the statute applies, so the schema "
+                "A regime being retracted still has this instance's own confirmations against "
+                + "it. Those are a reviewed judgement that the statute applies, so the schema "
                 + "refuses to drop them as a side effect. Remove the confirmations deliberately, "
                 + "then retract the regime.",
                 refused);
         }
+    }
+
+    /// <summary>
+    /// Confirmations a file makes that this instance has already made for itself.
+    /// </summary>
+    /// <remarks>
+    /// Reported, not overwritten. An operator who confirmed a regime against a company on
+    /// their own evidence keeps their evidence; the catalog's arriving later is not a
+    /// reason to replace it, and the report is what tells them the two now agree.
+    /// </remarks>
+    private static async Task<List<string>> ConfirmationsLeftAloneAsync(
+        NpgsqlConnection connection,
+        IReadOnlyList<BrokerRow> brokers,
+        CancellationToken cancellationToken)
+    {
+        var claimed = new List<string>();
+
+        foreach (var broker in brokers)
+        {
+            foreach (var confirmation in broker.SubjectTo)
+            {
+                await using var command = new NpgsqlCommand(
+                    """
+                    SELECT 1
+                    FROM broker_legal_basis bl
+                    JOIN legal_basis l ON l.id = bl.legal_basis_id
+                    WHERE bl.broker_id = @broker AND l.code = @code AND bl.source = 'local'
+                    LIMIT 1
+                    """,
+                    connection);
+
+                command.Parameters.AddWithValue("broker", broker.Id);
+                command.Parameters.AddWithValue("code", confirmation.Regime);
+
+                if (await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null)
+                {
+                    claimed.Add($"{broker.Domain} subject to {confirmation.Regime}");
+                }
+            }
+        }
+
+        return claimed;
+    }
+
+    /// <summary>
+    /// Writes one file entry as a confirmation against every row the regime has.
+    /// </summary>
+    /// <remarks>
+    /// A file names a regime; a regime is one row per request type it grants. A statute
+    /// that reaches a company reaches it for deletion and for opt-out alike, so the entry
+    /// fans out rather than asking the reviewer to repeat a judgement per row. Rows the
+    /// operator holds are skipped by the update's own guard.
+    /// </remarks>
+    private static async Task<int> ApplyConfirmationAsync(
+        NpgsqlConnection connection,
+        Guid brokerId,
+        ConfirmationRow confirmation,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO broker_legal_basis
+                (broker_id, legal_basis_id, confirmed_at, confirmed_by, evidence_url, source)
+            SELECT @broker, l.id, @confirmed_at, @confirmed_by, @evidence, 'catalog'
+            FROM legal_basis l
+            WHERE l.code = @code
+            ON CONFLICT (broker_id, legal_basis_id) DO UPDATE
+                SET confirmed_at = EXCLUDED.confirmed_at,
+                    confirmed_by = EXCLUDED.confirmed_by,
+                    evidence_url = EXCLUDED.evidence_url
+                WHERE broker_legal_basis.source = 'catalog'
+            """,
+            connection);
+
+        command.Parameters.AddWithValue("broker", brokerId);
+        command.Parameters.AddWithValue("code", confirmation.Regime);
+        command.Parameters.AddWithValue("confirmed_at", confirmation.ConfirmedAt);
+        command.Parameters.AddWithValue("confirmed_by", confirmation.ConfirmedBy);
+        command.Parameters.AddWithValue("evidence", confirmation.EvidenceUrl);
+
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes catalog confirmations no file makes any more.
+    /// </summary>
+    /// <remarks>
+    /// Only against companies the catalog still owns. A company an operator has taken
+    /// over is theirs entirely, and the confirmations the catalog once wrote against it
+    /// stay where they are — removing them would downgrade that operator's demands to
+    /// courtesy deadlines as a side effect of a decision about a different table.
+    /// </remarks>
+    private static async Task<int> RetractConfirmationsAsync(
+        NpgsqlConnection connection,
+        IReadOnlyList<BrokerRow> brokers,
+        CancellationToken cancellationToken)
+    {
+        var keys = brokers
+            .SelectMany(broker => broker.SubjectTo.Select(confirmation =>
+                $"{broker.Id}{KeySeparator}{confirmation.Regime}"))
+            .ToArray();
+
+        await using var command = new NpgsqlCommand(
+            """
+            DELETE FROM broker_legal_basis bl
+            USING legal_basis l, broker b
+            WHERE l.id = bl.legal_basis_id
+              AND b.id = bl.broker_id
+              AND bl.source = 'catalog'
+              AND b.source = 'catalog'
+              AND bl.broker_id::text || @separator || l.code <> ALL (@keys)
+            """,
+            connection);
+
+        command.Parameters.AddWithValue("keys", keys);
+        command.Parameters.AddWithValue("separator", KeySeparator.ToString());
+
+        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -20,9 +20,21 @@ internal sealed class BrokerLegalBasisConfiguration : IEntityTypeConfiguration<B
     {
         builder.HasKey(confirmation => new { confirmation.BrokerId, confirmation.LegalBasisId });
 
+        builder.Property(confirmation => confirmation.Source)
+            .HasConversion(
+                source => CatalogVocabulary.ToWire(source),
+                stored => SourceFromStorage(stored));
+
         // No navigation properties to Broker or LegalBasis. Nothing has needed to walk
         // from a confirmation to either side yet, and the resolution this table exists
         // for is a join written where it happens — adding them now would be guessing at
         // a query shape and would give the model two ways to say the same thing.
     }
+
+    private static CatalogSource SourceFromStorage(string stored) =>
+        CatalogVocabulary.ParseCatalogSource(stored)
+        ?? throw new InvalidOperationException(
+            $"broker_legal_basis.source holds '{stored}', which this build has no value for. "
+            + "Either a migration widened the check constraint ahead of the code, or a row "
+            + "was written by hand.");
 }

@@ -97,10 +97,11 @@ resolves against, and §9.1 expects it to reach the hundreds. `broker` is where 
 opt-out method, courtesy SLA and pacing live, and `broker_legal_basis` is where somebody records
 that a given statute reaches a given company.
 
-**Today:** both tables are empty. The way to fill the first now exists — a company is a
-`broker.yaml` under `catalog/brokers/<company>/`, applied by `catalog-sync` on every deploy and
-deactivated when its file goes — and the only directory there is the worked example, which is
-under a reserved domain and is never applied. Fifteen legal-basis rows ship; zero companies do.
+**Today:** both tables are empty. The way to fill both now exists — a company is a `broker.yaml`
+under `catalog/brokers/<company>/`, applied by `catalog-sync` on every deploy and deactivated when
+its file goes, and its `subjectTo` list is where the statutes that reach it are confirmed, with
+evidence — and the only directory there is the worked example, which is under a reserved domain
+and is never applied. Fifteen legal-basis rows ship; zero companies do.
 
 This is worth spelling out because the rest of the system looks finished around it. Concretely:
 
@@ -113,14 +114,11 @@ This is worth spelling out because the rest of the system looks finished around 
   operational default, so **no statutory deadline is reachable at all** however many jurisdictions
   get seeded. The deadline machinery is complete and permanently on its fallback path.
 
-**What closing it involves, roughly:** two kinds of work, now that the sync exists. A way to
-say in a company's file which statutes reach it — `broker_legal_basis` is still filled by nobody,
-and it is what makes a statutory deadline reachable at all. The confirmation belongs in the
-company's file rather than the regime's, because it is a fact about the company, and a state's
-data-broker registry is a primary source for it: a company on California's registry is subject to
-the CCPA by definition. And then the content itself: domain, removal method, mailbox or opt-out
-URL, target and pacing, read off real sites and cited, which is research rather than programming
-and is the long pole.
+**What closing it involves, roughly:** content, and only content, now that both mechanisms exist.
+Domain, removal method, mailbox or opt-out URL, target and pacing, read off real sites and cited;
+and for each, which statutes reach it, with a state data-broker registry entry as the evidence —
+a company on California's registry is subject to the CCPA by definition. That is research rather
+than programming and is the long pole.
 
 Fixtures stand in for a company in tests, so this does not block building the search or the
 connectors. It blocks anything running against a real one.

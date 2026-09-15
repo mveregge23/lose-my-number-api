@@ -14,7 +14,9 @@ using Dbr.CatalogSync;
 var check = args.Contains("--check", StringComparer.Ordinal);
 
 var catalog = CatalogReader.Read(Assembly.GetExecutingAssembly());
-var brokers = BrokerReader.Read(Assembly.GetExecutingAssembly());
+var brokers = BrokerReader.Read(
+    Assembly.GetExecutingAssembly(),
+    catalog.Rows.Select(row => row.Code).ToHashSet(StringComparer.Ordinal));
 
 var problems = catalog.Problems.Concat(brokers.Problems).ToList();
 
@@ -71,7 +73,8 @@ try
 
     Console.Out.WriteLine(
         $"Catalog applied: {result.Applied} legal-basis row(s) written, {result.Retracted} retracted; "
-        + $"{result.BrokersApplied} compan(ies) written, {result.BrokersRetracted} deactivated.");
+        + $"{result.BrokersApplied} compan(ies) written, {result.BrokersRetracted} deactivated; "
+        + $"{result.ConfirmationsApplied} confirmation(s) written, {result.ConfirmationsRetracted} retracted.");
 
     foreach (var claimed in result.LeftAlone)
     {

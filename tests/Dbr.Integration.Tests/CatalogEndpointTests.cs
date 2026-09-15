@@ -74,8 +74,8 @@ public class CatalogEndpointTests(PostgresFixture postgres) : IAsyncLifetime
                         ('{OptOutCode}', 'opt_out_sale', 'US-VA', 30, 0, 'none',
                          'https://example.test/opt-out', now(), 'counsel');
 
-             INSERT INTO public.broker_legal_basis (broker_id, legal_basis_id, confirmed_by)
-                 SELECT b.id, l.id, 'counsel'
+             INSERT INTO public.broker_legal_basis (broker_id, legal_basis_id, confirmed_by, evidence_url)
+                 SELECT b.id, l.id, 'counsel', 'https://registry.example/acme'
                  FROM public.broker b, public.legal_basis l
                  WHERE b.domain = '{AcmeDomain}' AND l.code = '{DeleteCode}';
              """);
@@ -213,6 +213,10 @@ public class CatalogEndpointTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal("counsel", regime.GetProperty("reviewedBy").GetString());
         Assert.Equal("counsel", regime.GetProperty("confirmedBy").GetString());
         Assert.NotEqual(JsonValueKind.Null, regime.GetProperty("confirmedAt").ValueKind);
+
+        // On what. A confirmation is a legal claim, and the thing a person can follow
+        // to check it is published beside the name of whoever made it.
+        Assert.Equal("https://registry.example/acme", regime.GetProperty("evidenceUrl").GetString());
     }
 
     [Fact]

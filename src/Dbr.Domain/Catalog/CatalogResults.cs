@@ -63,4 +63,8 @@ public sealed record DeadlineResolution(
 /// the deadline would be; the confirmation says that a person, on a date, judged it to
 /// reach this company — which is the part no code could work out.
 /// </remarks>
-public sealed record ConfirmedRegime(LegalBasis Basis, DateTimeOffset ConfirmedAt, string ConfirmedBy);
+public sealed record ConfirmedRegime(
+    LegalBasis Basis,
+    DateTimeOffset ConfirmedAt,
+    string ConfirmedBy,
+    string? EvidenceUrl);
