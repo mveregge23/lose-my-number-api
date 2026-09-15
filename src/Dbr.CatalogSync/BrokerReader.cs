@@ -8,7 +8,19 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace Dbr.CatalogSync;
 
+/// <summary>One regime a company is confirmed subject to, and the evidence for it.</summary>
+public sealed record ConfirmationRow(
+    string Regime,
+    string EvidenceUrl,
+    string ConfirmedBy,
+    DateTimeOffset ConfirmedAt);
+
 /// <summary>One company, as its file describes it.</summary>
+/// <param name="SubjectTo">
+/// The regimes confirmed to reach it. Carried on the row rather than beside it because
+/// a confirmation is meaningless without its company, and the sync applies the two
+/// together.
+/// </param>
 public sealed record BrokerRow(
     Guid Id,
     string Name,
@@ -21,7 +33,8 @@ public sealed record BrokerRow(
     int MinDelayMs,
     int RateLimitThreshold,
     int CooldownMinutes,
-    int FormChangeThreshold);
+    int FormChangeThreshold,
+    IReadOnlyList<ConfirmationRow> SubjectTo);
 
 /// <param name="Rows">Every company the files describe and the sync should apply.</param>
 /// <param name="WorkedExamples">
@@ -63,8 +76,16 @@ public static class BrokerReader
     private const string SearchFile = "search.yaml";
     private const string MailboxFile = "email.yaml";
 
-    /// <summary>Reads the company files compiled into an assembly.</summary>
-    public static BrokerReadResult Read(Assembly assembly)
+    /// <summary>
+    /// Reads the company files compiled into an assembly.
+    /// </summary>
+    /// <param name="assembly">The sync assembly.</param>
+    /// <param name="regimes">
+    /// The codes of every regime the same catalog defines. A company may only claim to be
+    /// subject to one of these; a claim naming anything else would be a confirmation the
+    /// sync could never write, and the file would look complete.
+    /// </param>
+    public static BrokerReadResult Read(Assembly assembly, IReadOnlySet<string> regimes)
     {
         ArgumentNullException.ThrowIfNull(assembly);
 
@@ -79,16 +100,19 @@ public static class BrokerReader
                 return (Name: name[ResourcePrefix.Length..], Yaml: reader.ReadToEnd());
             });
 
-        return Read(files);
+        return Read(files, regimes);
     }
 
     /// <summary>
     /// Reads companies from files already in hand, named by their path under
     /// <c>catalog/brokers/</c> — <c>some-company/broker.yaml</c>.
     /// </summary>
-    public static BrokerReadResult Read(IEnumerable<(string Name, string Yaml)> files)
+    public static BrokerReadResult Read(
+        IEnumerable<(string Name, string Yaml)> files,
+        IReadOnlySet<string> regimes)
     {
         ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(regimes);
 
         var strict = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -127,7 +151,7 @@ public static class BrokerReader
 
         foreach (var directory in byDirectory)
         {
-            ReadDirectory(strict, header, directory.Key, directory.ToList(), rows, examples, problems);
+            ReadDirectory(strict, header, regimes, directory.Key, directory.ToList(), rows, examples, problems);
         }
 
         var applied = rows.Where(row => !IsReserved(row.Domain)).ToList();
@@ -184,6 +208,7 @@ public static class BrokerReader
     private static void ReadDirectory(
         IDeserializer strict,
         IDeserializer header,
+        IReadOnlySet<string> regimes,
         string directory,
         List<(string Path, string Yaml)> files,
         List<BrokerRow> rows,
@@ -205,7 +230,7 @@ public static class BrokerReader
             return;
         }
 
-        var row = ReadRow(strict, rowFile.Path, rowFile.Yaml, problems);
+        var row = ReadRow(strict, regimes, rowFile.Path, rowFile.Yaml, problems);
 
         var before = problems.Count;
 
@@ -240,6 +265,7 @@ public static class BrokerReader
 
     private static BrokerRow? ReadRow(
         IDeserializer deserializer,
+        IReadOnlySet<string> regimes,
         string file,
         string yaml,
         List<string> problems)
@@ -345,6 +371,8 @@ public static class BrokerReader
                 + "read — the company's privacy page, or a registry entry.");
         }
 
+        var confirmations = ReadConfirmations(regimes, file, parsed.SubjectTo, problems);
+
         if (problems.Count != before)
         {
             return null;
@@ -365,7 +393,90 @@ public static class BrokerReader
             pacing.MinDelayMs ?? 1000,
             pacing.RateLimitThreshold ?? 3,
             pacing.CooldownMinutes ?? 30,
-            pacing.FormChangeThreshold ?? 3);
+            pacing.FormChangeThreshold ?? 3,
+            confirmations);
+    }
+
+    /// <summary>
+    /// The regimes a file says reach the company, held to the bar a legal claim gets.
+    /// </summary>
+    /// <remarks>
+    /// Stricter than the rest of the file on purpose. The row is public fact and carries
+    /// a source that is checked and not stored; a confirmation decides which deadline
+    /// somebody is told they have recourse over, so it carries what a regime row carries
+    /// — a citation, a reviewer and a date — and every one of them is stored.
+    /// </remarks>
+    private static List<ConfirmationRow> ReadConfirmations(
+        IReadOnlySet<string> regimes,
+        string file,
+        List<SubjectToEntry> entries,
+        List<string> problems)
+    {
+        var confirmations = new List<ConfirmationRow>();
+
+        foreach (var entry in entries)
+        {
+            var code = entry.Regime?.Trim();
+            var where = $"{file} / subjectTo {code ?? "(no regime)"}";
+
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                problems.Add($"{where}: names no regime.");
+            }
+            else if (!regimes.Contains(code))
+            {
+                // The one check nothing else can make: the regime files are the only
+                // place a code is defined, and a confirmation against a code none of them
+                // carries is a row the sync could never write, in a file that reads as
+                // complete.
+                problems.Add(
+                    $"{where}: no file under catalog/legal-basis/ defines a regime with this "
+                    + "code. A confirmation is a claim about a regime, and this one would be "
+                    + "about nothing.");
+            }
+
+            if (!IsCitation(entry.EvidenceUrl))
+            {
+                problems.Add(
+                    $"{where}: evidenceUrl must be an https link to where it was read that this "
+                    + "regime reaches the company — a registry entry, or the company's own notice.");
+            }
+
+            if (string.IsNullOrWhiteSpace(entry.ConfirmedBy))
+            {
+                problems.Add(
+                    $"{where}: no confirmedBy. A claim about which statute governs somebody's "
+                    + "request has to have a person behind it.");
+            }
+
+            if (entry.ConfirmedAt is null)
+            {
+                problems.Add($"{where}: no confirmedAt.");
+            }
+
+            if (string.IsNullOrWhiteSpace(code) || !regimes.Contains(code) || !IsCitation(entry.EvidenceUrl)
+                || string.IsNullOrWhiteSpace(entry.ConfirmedBy) || entry.ConfirmedAt is null)
+            {
+                continue;
+            }
+
+            confirmations.Add(new ConfirmationRow(
+                code,
+                entry.EvidenceUrl!.Trim(),
+                entry.ConfirmedBy.Trim(),
+                new DateTimeOffset(DateTime.SpecifyKind(entry.ConfirmedAt.Value.Date, DateTimeKind.Utc))));
+        }
+
+        foreach (var duplicate in confirmations
+            .GroupBy(confirmation => confirmation.Regime, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1))
+        {
+            problems.Add(
+                $"{file}: is subject to {duplicate.Key} more than once, and which entry's "
+                + "evidence would be stored would come down to order.");
+        }
+
+        return confirmations;
     }
 
     private static void ReadRecipe(

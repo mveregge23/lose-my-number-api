@@ -77,6 +77,44 @@ public sealed class BrokerFile
     /// is what a reviewer follows to check it.
     /// </summary>
     public string? SourceUrl { get; set; }
+
+    /// <summary>
+    /// The regimes that reach this company, each with the evidence for saying so.
+    /// </summary>
+    /// <remarks>
+    /// The judgement the design says no code may make, written where a reviewer can
+    /// check it. Optional as a list: a company with none falls back to its courtesy
+    /// target on every request, honestly labelled as such, which is the safe absence.
+    /// </remarks>
+    public List<SubjectToEntry> SubjectTo { get; set; } = [];
+}
+
+/// <summary>
+/// One regime that reaches the company, and why that is believed.
+/// </summary>
+/// <remarks>
+/// Named by regime code rather than by request type, because applicability is a fact
+/// about the statute and the company: a regime that reaches a company reaches it for
+/// every kind of demand it grants. The sync writes one confirmation per row the regime
+/// has. This carries what the regime file carries and the company row does not — a
+/// citation and a reviewer — because it is a legal claim rather than a public fact.
+/// </remarks>
+public sealed class SubjectToEntry
+{
+    /// <summary>The code of a regime in <c>catalog/legal-basis/</c>.</summary>
+    public string? Regime { get; set; }
+
+    /// <summary>
+    /// Where it was read that the regime reaches this company. A state's data-broker
+    /// registry is the usual source: a company on it has declared itself subject to
+    /// that state's law.
+    /// </summary>
+    public string? EvidenceUrl { get; set; }
+
+    public string? ConfirmedBy { get; set; }
+
+    /// <summary>A date, read as midnight UTC, for the reason the regime file gives.</summary>
+    public DateTime? ConfirmedAt { get; set; }
 }
 
 /// <summary>The pacing block, mirroring the columns it fills.</summary>

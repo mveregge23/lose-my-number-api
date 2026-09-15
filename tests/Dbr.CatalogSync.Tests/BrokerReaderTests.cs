@@ -18,7 +18,8 @@ public class BrokerReaderTests
 {
     private static readonly Assembly Sync = typeof(BrokerRow).Assembly;
 
-    private static BrokerReadResult Read() => BrokerReader.Read(Sync);
+    private static BrokerReadResult Read() =>
+        BrokerReader.Read(Sync, CatalogReader.Read(Sync).Rows.Select(row => row.Code).ToHashSet(StringComparer.Ordinal));
 
     [Fact]
     public void The_shipped_catalog_reads_without_complaint()
@@ -67,7 +68,7 @@ public class BrokerReaderTests
         // not, because the worked example always ships, so a build with none has a glob
         // that stopped matching. Applying it would deactivate every company on every
         // instance while reporting a clean, empty catalog.
-        var read = BrokerReader.Read([]);
+        var read = BrokerReader.Read([], new HashSet<string>(StringComparer.Ordinal));
 
         var problem = Assert.Single(read.Problems);
         Assert.Contains("glob", problem, StringComparison.Ordinal);

@@ -192,10 +192,12 @@ public static class CatalogEndpoints
             reviewedAt = regime.Basis.ReviewedAt,
             reviewedBy = regime.Basis.ReviewedBy,
 
-            // Who decided this statute reaches this company, and when. The part no code
-            // could work out, which is why it is published rather than summarised away.
+            // Who decided this statute reaches this company, when, and on what. The part
+            // no code could work out, which is why it is published rather than summarised
+            // away. Evidence is null for a confirmation an operator entered without one.
             confirmedAt = regime.ConfirmedAt,
             confirmedBy = regime.ConfirmedBy,
+            evidenceUrl = regime.EvidenceUrl,
         };
 
     private static object Regime(LegalBasis basis) =>

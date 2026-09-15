@@ -39,9 +39,14 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
 
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
+    private string TestRegime => $"SYNC{_suffix.ToUpperInvariant()}";
+
     public async ValueTask DisposeAsync() =>
         await postgres.ExecuteAsOwnerAsync(
-            $"DELETE FROM public.broker WHERE id IN ('{_managed}', '{_owned}');");
+            $"""
+             DELETE FROM public.broker WHERE id IN ('{_managed}', '{_owned}');
+             DELETE FROM public.legal_basis WHERE code = '{TestRegime}';
+             """);
 
     [Fact]
     public async Task A_file_becomes_a_row_the_catalog_owns()
@@ -196,12 +201,131 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
                 $"SELECT count(*) FROM public.legal_basis WHERE code = '{regime}'"));
     }
 
+    [Fact]
+    public async Task A_confirmed_regime_becomes_one_confirmation_per_row_the_regime_has()
+    {
+        // The file names a statute; the statute is a row per request type it grants. A
+        // regime that reaches a company reaches it for deletion and for opt-out alike, so
+        // the reviewer's one judgement fans out rather than being asked three times.
+        var result = await RunAsync([Company(_managed, ManagedDomain, subjectTo: "CCPA")]);
+
+        var rows = await postgres.QueryAsOwnerAsync<long>(
+            "SELECT count(*) FROM public.legal_basis WHERE code = 'CCPA'");
+
+        Assert.Equal(rows, result.ConfirmationsApplied);
+        Assert.Equal(rows, await ConfirmationsAsync("CCPA"));
+        Assert.Equal("catalog", await ConfirmationColumnAsync<string>("source"));
+        Assert.Equal("https://registry.example/CCPA", await ConfirmationColumnAsync<string>("evidence_url"));
+    }
+
+    [Fact]
+    public async Task A_regime_dropped_from_the_file_takes_its_confirmations_with_it()
+    {
+        await RunAsync([Company(_managed, ManagedDomain, subjectTo: "CCPA")]);
+        Assert.NotEqual(0L, await ConfirmationsAsync("CCPA"));
+
+        var result = await RunAsync([Company(_managed, ManagedDomain)]);
+
+        Assert.Equal(0L, await ConfirmationsAsync("CCPA"));
+        Assert.NotEqual(0, result.ConfirmationsRetracted);
+    }
+
+    [Fact]
+    public async Task A_confirmation_this_instance_made_itself_is_left_alone_and_not_retracted()
+    {
+        // An operator confirmed the regime on their own evidence before the catalog got
+        // to it. The catalog's evidence does not replace theirs, and a catalog that later
+        // stops claiming the regime does not take their judgement with it.
+        await RunAsync([Company(_managed, ManagedDomain)]);
+        await postgres.ExecuteAsOwnerAsync(
+            $"""
+             INSERT INTO public.broker_legal_basis (broker_id, legal_basis_id, confirmed_by)
+                 SELECT '{_managed}', l.id, 'counsel' FROM public.legal_basis l WHERE l.code = 'CCPA';
+             """);
+
+        var described = await RunAsync([Company(_managed, ManagedDomain, subjectTo: "CCPA")]);
+
+        Assert.Equal("counsel", await ConfirmationColumnAsync<string>("confirmed_by"));
+        Assert.Null(await ConfirmationColumnAsync<string>("evidence_url"));
+        Assert.Contains(described.LeftAlone, claimed => claimed.Contains("CCPA", StringComparison.Ordinal));
+
+        var omitted = await RunAsync([Company(_managed, ManagedDomain)]);
+
+        Assert.Equal(0, omitted.ConfirmationsRetracted);
+        Assert.NotEqual(0L, await ConfirmationsAsync("CCPA"));
+    }
+
+    [Fact]
+    public async Task A_regime_and_every_claim_on_it_can_leave_the_files_in_one_run()
+    {
+        // Confirmations are taken back before regimes are, so the catalog can retract a
+        // statute it once confirmed companies against without an operator having to
+        // clear the confirmations by hand first — that refusal is for confirmations the
+        // sync never owned.
+        await RunAsync([Company(_managed, ManagedDomain, subjectTo: TestRegime)], [Regime(TestRegime)]);
+        Assert.NotEqual(0L, await ConfirmationsAsync(TestRegime));
+
+        var result = await RunAsync([Company(_managed, ManagedDomain)]);
+
+        Assert.NotEqual(0, result.ConfirmationsRetracted);
+        Assert.NotEqual(0, result.Retracted);
+        Assert.Equal(
+            0L,
+            await postgres.QueryAsOwnerAsync<long>(
+                $"SELECT count(*) FROM public.legal_basis WHERE code = '{TestRegime}'"));
+    }
+
+    [Fact]
+    public async Task A_regime_leaving_the_files_with_an_operators_confirmation_against_it_is_still_refused()
+    {
+        await RunAsync([Company(_managed, ManagedDomain)], [Regime(TestRegime)]);
+        await postgres.ExecuteAsOwnerAsync(
+            $"""
+             INSERT INTO public.broker_legal_basis (broker_id, legal_basis_id, confirmed_by)
+                 SELECT '{_managed}', l.id, 'counsel' FROM public.legal_basis l WHERE l.code = '{TestRegime}';
+             """);
+
+        await Assert.ThrowsAsync<CatalogSyncRefusedException>(() => RunAsync([Company(_managed, ManagedDomain)]));
+
+        Assert.NotEqual(0L, await ConfirmationsAsync(TestRegime));
+    }
+
+    [Fact]
+    public async Task Confirmations_against_a_company_the_operator_took_over_are_not_touched()
+    {
+        // The company is theirs entirely once taken over. The catalog's own confirmations
+        // against it stay exactly as written — neither updated nor removed — because
+        // removing them would downgrade that operator's demands to courtesy deadlines as
+        // a side effect of a decision about a different table.
+        await RunAsync([Company(_managed, ManagedDomain, subjectTo: "CCPA")]);
+        await postgres.ExecuteAsOwnerAsync(
+            $"UPDATE public.broker SET source = 'local' WHERE id = '{_managed}';");
+
+        var result = await RunAsync([Company(_managed, ManagedDomain)]);
+
+        Assert.Equal(0, result.ConfirmationsRetracted);
+        Assert.NotEqual(0L, await ConfirmationsAsync("CCPA"));
+    }
+
+    private async Task<long> ConfirmationsAsync(string code) =>
+        await postgres.QueryAsOwnerAsync<long>(
+            $"""
+             SELECT count(*) FROM public.broker_legal_basis bl
+             JOIN public.legal_basis l ON l.id = bl.legal_basis_id
+             WHERE bl.broker_id = '{_managed}' AND l.code = '{code}'
+             """);
+
+    private async Task<T?> ConfirmationColumnAsync<T>(string column) =>
+        await postgres.QueryAsOwnerAsync<T>(
+            $"SELECT {column} FROM public.broker_legal_basis WHERE broker_id = '{_managed}' LIMIT 1");
+
     private static BrokerRow Company(
         Guid id,
         string domain,
         string name = "Some Company",
         bool active = true,
-        int minDelayMs = 1000) =>
+        int minDelayMs = 1000,
+        params string[] subjectTo) =>
         new(
             id,
             name,
@@ -214,7 +338,12 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
             MinDelayMs: minDelayMs,
             RateLimitThreshold: 3,
             CooldownMinutes: 30,
-            FormChangeThreshold: 3);
+            FormChangeThreshold: 3,
+            [.. subjectTo.Select(code => new ConfirmationRow(
+                code,
+                $"https://registry.example/{code}",
+                "@mveregge23",
+                new DateTimeOffset(2026, 9, 15, 0, 0, 0, TimeSpan.Zero)))]);
 
     private static CatalogRow Regime(string code) =>
         new(
@@ -246,7 +375,7 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
     {
         var sync = typeof(BrokerRow).Assembly;
         var shippedRegimes = CatalogReader.Read(sync).Rows;
-        var shippedBrokers = BrokerReader.Read(sync).Rows;
+        var shippedBrokers = BrokerReader.Read(sync, shippedRegimes.Select(row => row.Code).ToHashSet(StringComparer.Ordinal)).Rows;
 
         return await new CatalogSyncRunner(postgres.ConnectionString)
             .RunAsync(
