@@ -1,0 +1,35 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+What Spokeo serves when nobody by that name is listed: a 404, and a page saying "Your
+search - … - did not match any results." The status is declared in fixtures.yaml, because
+it is half of what this page means — read as HTTP alone it is a search page that has moved,
+and the classification tag in the head is what the recipe reads to know better. Trimmed and
+rewritten as the others are.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Results Not Found for Alex Whitfield - Spokeo</title>
+  <meta name="spk-categorization" content="eyJwYWdlX2NhdGVnb3J5IjoibmFtZSIsInBhZ2Vfc3VidHlwZSI6Im5vbmUiLCJwYWdlX3R5cGUiOiJub3Jlc3VsdCJ9">
+</head>
+<body>
+  <div data-testid="app-container-wrapper" class="relative bg-gray-100">
+    <div data-testid="app-container" class="mx-auto max-w-[800px] pt-sm">
+      <div class="border border-solid border-gray-200 bg-white px-md py-2lg">
+        <div class="display-7 font-medium text-gray-700">Your search - <span class="inline font-semibold">Alex Whitfield</span> - did not match any results.</div>
+        <div class="flex w-full flex-col items-start justify-start gap-sm bg-gray-100 p-sm">
+          <div>Suggestions:</div>
+          <ul>
+            <li>Double check the spelling</li>
+            <li>Search with just a phone number or email address</li>
+            <li>Find someone close to them, like a family member</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

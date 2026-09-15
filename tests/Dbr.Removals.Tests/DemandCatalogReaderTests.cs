@@ -31,7 +31,10 @@ public class DemandCatalogReaderTests
     {
         var read = Shipped();
 
-        var recipe = Assert.Single(read.Recipes);
+        // Among the real companies now shipping beside it, not alone.
+        var recipe = Assert.Single(
+            read.Recipes,
+            candidate => candidate.BrokerId == Guid.Parse("2f6b1c48-9d3a-4e57-b8a1-0c5e7f9d24b3"));
 
         Assert.Equal("privacy", recipe.Mailbox);
         Assert.Equal("privacy@example.com", recipe.AddressAt("example.com"));

@@ -129,7 +129,16 @@ public sealed class GenericWebSearchConnector(
 
         using (response)
         {
-            if (Refusal(response) is { } refused)
+            // Some companies answer "nobody by that name" with a 404 and a page saying so.
+            // Read as HTTP alone, that is a search endpoint that has moved — not retried, and
+            // flagged for whoever maintains the catalog — so every person the company does
+            // not list would report the recipe as broken. The recipe's own marker is the
+            // reviewed statement of what the company's no-results page looks like, and it is
+            // consulted before the status code is believed. A 404 carrying no such marker is
+            // still what it looks like: the page is gone.
+            var notFound = response.StatusCode == HttpStatusCode.NotFound;
+
+            if (!notFound && Refusal(response) is { } refused)
             {
                 return refused;
             }
@@ -137,6 +146,15 @@ public sealed class GenericWebSearchConnector(
             var html = await response.Content
                 .ReadAsStringAsync(cancellationToken)
                 .ConfigureAwait(false);
+
+            if (notFound)
+            {
+                using var document = Parser.ParseDocument(html);
+
+                return document.QuerySelector(Recipe.NoResults) is not null
+                    ? new SearchResult.NothingFound()
+                    : Refusal(response)!;
+            }
 
             return Read(html, address, context.ReleasedIdentity);
         }

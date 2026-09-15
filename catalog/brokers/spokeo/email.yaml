@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Where Spokeo takes a removal by mail. Read from https://www.spokeo.com/optout on
+# 2026-09-15: "Our customer care representatives are available to assist you here, or you
+# can email us directly at privacy@spokeo.com."
+#
+# The local part only. The domain comes from the company's row, so this document cannot
+# send anybody's details anywhere but to the company it sits beside.
+
+brokerId: edea346d-25ab-4eab-a9b7-d9b4c6132625
+description: >
+  Spokeo's privacy mailbox, named on its opt-out page as the direct alternative to the
+  removal form.
+
+mailbox: privacy

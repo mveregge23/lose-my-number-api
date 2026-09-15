@@ -90,73 +90,55 @@ not: it tells the broker exactly who is asking, which is a disclosure to weigh r
 
 ---
 
-## The catalog has no companies in it
+## The catalog has one company in it
 
 **Required by:** §6.3 makes the broker catalog the reference data every scan and removal request
-resolves against, and §9.1 expects it to reach the hundreds. `broker` is where a company's domain,
-opt-out method, courtesy SLA and pacing live, and `broker_legal_basis` is where somebody records
-that a given statute reaches a given company.
+resolves against, and §9.1 expects it to reach the hundreds.
 
-**Today:** both tables are empty. The way to fill both now exists — a company is a `broker.yaml`
-under `catalog/brokers/<company>/`, applied by `catalog-sync` on every deploy and deactivated when
-its file goes, and its `subjectTo` list is where the statutes that reach it are confirmed, with
-evidence — and the only directory there is the worked example, which is under a reserved domain
-and is never applied. Fifteen legal-basis rows ship; zero companies do.
+**Today:** one. `catalog/brokers/spokeo/` is a real company with a row, a mailbox, a search recipe
+and a CCPA confirmation citing the California registry, and it is the whole catalog. A scan that is
+not narrowed searches Spokeo; a removal request can be addressed to Spokeo; a Californian's demand
+to Spokeo gets a statutory deadline. Everyone else on the internet is not here.
 
-This is worth spelling out because the rest of the system looks finished around it. Concretely:
-
-- A scan that is not narrowed means "the whole catalog", which is nothing. It completes and finds
-  nothing, and that is indistinguishable from a clean bill of health.
-- The per-broker queue lanes declare **zero endpoints** — the lane directory reads active brokers
-  from an empty table. The pacing works; there is nothing to pace.
-- A removal request has no company to be addressed to.
-- With no `broker_legal_basis` rows, jurisdiction resolution always falls back to the broker's
-  operational default, so **no statutory deadline is reachable at all** however many jurisdictions
-  get seeded. The deadline machinery is complete and permanently on its fallback path.
-
-**What closing it involves, roughly:** content, and only content, now that both mechanisms exist.
-Domain, removal method, mailbox or opt-out URL, target and pacing, read off real sites and cited;
-and for each, which statutes reach it, with a state data-broker registry entry as the evidence —
-a company on California's registry is subject to the CCPA by definition. That is research rather
-than programming and is the long pole.
-
-Fixtures stand in for a company in tests, so this does not block building the search or the
-connectors. It blocks anything running against a real one.
+**What closing it involves, roughly:** content, and a way to make it faster. The California
+registry is a CSV of 603 registrants, each with a website, a contact mailbox, a privacy-rights URL
+and self-reported deletion counts, and it is a primary source for the row and for the CCPA
+confirmation alike — an importer that turns a registry export into `broker.yaml` files with the
+registry as their citation is the difference between reading six hundred privacy pages and
+reviewing six hundred diffs. It will need a rule for registrants that list several domains (63 of
+them do), since a row here is one domain. What it cannot produce is a search recipe, which is read
+off a real results page by a person and is the long pole per company — and see the entry below for
+why most of those pages cannot be read at all yet.
 
 ---
 
-## No real company has a search recipe
+## The recipe tier reaches almost nobody
 
-**Required by:** §6.4 makes a scan the act of asking a set of brokers what they hold about one
-identity, and §9.1 expects most of them to be described by a recipe reviewed as data rather than by
-a hand-written class.
+**Required by:** §9.1's design has most companies described by a search recipe — a path, four
+selectors, reviewed as data — and a hand-written class only for the handful a document cannot
+describe. The recipe engine is an HTTP client and an HTML parser.
 
-**Today:** the search half is built and works. A queued run is claimed, fanned out to one leg per
-company through that company's own lane, given a grant covering exactly the groups its recipe
-mentions, and settled when every leg has answered; each finding is scored against one floor and
-written as an exposure if it clears. A recipe engine reads a results page and reports what each
-listing agreed with, and the whole of it is exercised on every pull request against recorded pages.
+**Today:** of fourteen people-search sites probed on 2026-09-15 with an ordinary HTTP client and a
+browser's User-Agent, **thirteen answered with a Cloudflare JavaScript challenge or a captcha** —
+Whitepages, TruePeopleSearch, FastPeopleSearch, FamilyTreeNow, Nuwber, Radaris, ThatsThem,
+BeenVerified, MyLife, SearchPeopleFree and the rest. A recipe against any of them finishes `blocked`
+on the first request: correctly classified, finding nothing. Spokeo is the fourteenth, and it is the
+first company in the catalog for exactly that reason.
 
-**All of that runs against one company, and that company is invented.** `example-broker` exists to
-prove the machinery and to be the worked example; it serves no real listings because it serves
-nothing at all. No real company has a recipe, for the plainer reason recorded above: no real company
-is in the catalog. A scan of a live instance today reaches every entry it has and finishes
-`no_search_available` on all of them.
+The design's assumption was wrong about the shape of the web these companies run on, not about the
+tier itself. The recipe — a reviewed document saying where to ask and what to read — is still the
+right unit; what fetches the page has to be a browser.
 
-**What closing it involves, roughly:** the catalog content — see the entry above — and a recipe
-beside each company's recorded pages. That is research and reviewing rather than engineering: read
-a site, write down the query it takes and the selectors its results use, record the pages that prove
-it, open a pull request. The dry-run in `Dbr.Search.Tests` checks the result, so a recipe arrives
-with something that fails when it is wrong.
-
-**Also missing: the code tier.** §9.1 allows a hand-written class for the handful of companies a
-document cannot describe, allow-listed and compiled into the worker. Nothing implements one and
-nothing needs to yet — `SearchKind.Code` exists in the contract so that the distinction is legible
-at dispatch when it does.
-
-**Worth being blunt about:** the scan pipeline is real, tested end to end, and finds nothing on a
-real deployment. Do not read a completed scan with no findings as good news until this entry and the
-one above it are gone.
+**What closing it involves, roughly:** the one-job-one-process browser the removal side already
+planned for web forms, used for search as well: a short-lived headless browser that loads the
+results page, waits out the challenge where the challenge is the passive kind, and hands the
+resulting document to the same recipe and the same selectors. Two things to be honest about before
+building it. Cloudflare's managed challenge is designed to distinguish exactly this from a person,
+and a headless browser passes it some of the time, not reliably; the outcome for a company that
+does not pass stays `blocked`, and the catalog should be able to say per company which tier to use
+so that a company known to block is not asked with the cheap tier first. And a browser process per
+search is a different cost from an HTTP request per search — the pacing fields on the row were
+written for the second, and the first may need its own.
 
 ---
 

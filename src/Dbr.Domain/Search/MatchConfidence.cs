@@ -45,6 +45,15 @@ public static class MatchConfidence
     /// without reading them. Add any second agreement, even a partial one, and it clears.
     /// </para>
     /// <para>
+    /// <b>Two partial agreements are two agreements.</b> The bar was first set at 0.35, and
+    /// the first real listing this service ever found sat below it at 0.33: a name with a
+    /// middle initial the profile does not carry, in the right city, with no street on the
+    /// page — which is the most ordinary shape a results page has, and is one person's own
+    /// listing. Partial and partial score 0.33, one exact name scores 0.25, and the bar sits
+    /// between them rather than above both. What it still refuses is what it was built to
+    /// refuse: a name alone, a city alone, a partial name alone.
+    /// </para>
+    /// <para>
     /// <b>Below this nothing is written at all</b>, rather than written and hidden. An
     /// exposure row is a durable record that a company probably holds this person's data,
     /// and with the source reference it will carry it is a further copy of their identity —
@@ -54,7 +63,7 @@ public static class MatchConfidence
     /// number is enough to notice a bar set wrong, and it is not about anybody.
     /// </para>
     /// </remarks>
-    public const double Floor = 0.35;
+    public const double Floor = 0.30;
 
     /// <summary>
     /// Net corroboration at which confidence reaches one half.

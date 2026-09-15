@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Spokeo's pages, as snippets. The first real company here, and the first to answer the
+# question of what a fixture for a real site should be.
+#
+# Not a recording. A saved results page is several hundred kilobytes of scripts, styles,
+# tracking and other people's names and cities, of which a recipe reads four selectors. So
+# each page here is the company's own markup as served on 2026-09-15, trimmed to the
+# elements the recipe touches and the structure around them, with every person on it
+# replaced by the identity the test suite uses throughout. It is what somebody writing the
+# recipe was looking at, made reviewable: small enough to read in a diff, carrying nobody's
+# data, and failing the dry-run when a selector is wrong.
+#
+# What it is not is a drift detector. A snippet passes for as long as it exists, however the
+# live site changes underneath it; noticing that is the job of the live signals — a run that
+# meets a changed page, and the scheduled reverification — and never was the fixture's. When
+# the site changes, the fix is a pull request that updates recipe and snippet together, and
+# the snippet's diff is what shows a reviewer what changed on the site.
+#
+# The scenarios the company was seen to serve, and no others. Nothing here rate-limits,
+# blocks or errors, because Spokeo did none of those while this was written, and a page it
+# has never served would be a guess dressed as a recording.
+
+broker: spokeo
+description: >
+  Spokeo's name search: a results page with one listing, one with several, and the 404 it
+  answers with when nobody by that name is listed.
+
+scenarios:
+  - name: one-match
+    kind: search
+    expect: found
+    description: >
+      A name-state-city search holding one listing that agrees on the name and the city.
+    responses:
+      - body: one-match.html
+
+  - name: several-matches
+    kind: search
+    expect: found
+    description: >
+      Three listings for the surname: the person, a namesake in another city, and someone
+      under a longer given name in the same city. All three are reported with what each
+      agreed on; the floor above the search decides which anybody is shown.
+    responses:
+      - body: several-matches.html
+
+  - name: no-results
+    kind: search
+    expect: nothing-found
+    description: >
+      Nobody by that name, answered with a 404 and a page saying so. The status is the
+      point of recording it: a bare 404 is a search page that has moved, and this company
+      uses one to mean the person is not listed. The recipe's marker is what tells the two
+      apart, and this scenario is what proves the engine asks it before believing the
+      status code.
+    responses:
+      - status: 404
+        body: no-results.html

@@ -1,0 +1,45 @@
+<!--
+SPDX-FileCopyrightText: 2026 Max Veregge
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+A Spokeo results page for a name-state-city search, holding one listing. A snippet, not a
+recording: the markup is the company's own as served on 2026-09-15 — the head's
+classification tag, the results list with its id and role, one list item with its heading
+link and residence line — trimmed of the header, filters, footer, scripts and styles the
+recipe never reads, and with the person on it replaced by the test suite's invented identity.
+The utility class names are kept on the elements the recipe touches, so a selector written
+against a class would fail here the way it would fail live.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Alex Whitfield in Sacramento, California | Phone Number, Email, Address - Spokeo</title>
+  <meta name="spk-categorization" content="eyJwYWdlX2NhdGVnb3J5IjoibmFtZSIsInBhZ2Vfc3VidHlwZSI6ImNpdHkiLCJwYWdlX3R5cGUiOiJzZXJwIn0=">
+</head>
+<body>
+  <div data-testid="app-container">
+    <h1 class="display-9 font-medium text-gray-700">Alex Whitfield in Sacramento, California</h1>
+    <div data-testid="person-list">
+      <div class="overflow-hidden border border-gray-200 bg-white">
+        <div id="name-search-results-list" aria-label="Search Results" role="list">
+          <div role="listitem" class="flex flex-row border-b-gray-300 px-2lg py-lg hover:shadow-lg not-last:border-b">
+            <div class="w-full whitespace-pre-line leading-[1.6em] text-gray-600">
+              <h3 class="flex items-center flex-0 flex-wrap gap-xs">
+                <a href="/Alex-Whitfield/California/Sacramento/p1000000000000000000001" class="display-4 font-semibold text-blue-400">Alex Whitfield, Age 41</a>
+              </h3>
+              <div class="display-1 my-xs font-semibold uppercase">Resides in Sacramento, CA</div>
+              <div class="flex flex-wrap items-center gap-xs">
+                <span class="font-semibold">Includes </span>
+                <span>Address(1) </span>
+                <span>Email(2) </span>
+              </div>
+            </div>
+            <div class="see-results display-2-heavy mt-md flex h-2xl min-w-[140px] cursor-pointer items-center justify-center rounded-[2px] uppercase text-white bg-teal-300"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
