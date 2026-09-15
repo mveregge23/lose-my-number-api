@@ -85,5 +85,15 @@ public class Broker
     /// <summary>Which address this broker will correspond at.</summary>
     public EmailContactMode EmailContactMode { get; set; } = EmailContactMode.AliasPreferred;
 
+    /// <summary>
+    /// Whether the shared catalog owns this row or this instance does.
+    /// </summary>
+    /// <remarks>
+    /// Decides what the catalog sync may do to it: a catalog row is updated and
+    /// deactivated to match the files, a local one is never touched. Local by default,
+    /// because a row arriving by any route other than the sync is somebody's own.
+    /// </remarks>
+    public CatalogSource Source { get; set; } = CatalogSource.Local;
+
     public DateTimeOffset CreatedAt { get; init; }
 }
