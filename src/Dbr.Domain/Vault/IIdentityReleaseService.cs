@@ -128,12 +128,20 @@ public sealed record MintReleaseResult(MintReleaseOutcome Outcome, MintedRelease
 /// </param>
 /// <param name="RemovalJobId">The attempt the grant was minted for, or null for a scan leg's.</param>
 /// <param name="BrokerId">The company the work is addressed to.</param>
+/// <param name="Listing">
+/// The listing the demand is about, opened from the vault, or <see langword="null"/>. Set
+/// only for a grant minted for an attempt whose demand cites a finding — a scan leg has no
+/// listing yet, and a demand opened without one has none to cite. Not an identity group and
+/// not covered by <paramref name="Fields"/>: it is released because the attempt is about it,
+/// to the one party there is no point withholding it from.
+/// </param>
 public sealed record RedeemedRelease(
     Guid? ScanId,
     Guid? RemovalJobId,
     Guid BrokerId,
     IReadOnlyList<IdentityField> Fields,
-    ProfileIdentityFields Identity);
+    ProfileIdentityFields Identity,
+    Uri? Listing = null);
 
 /// <param name="Release">The grant, or <see langword="null"/> when it was refused.</param>
 public sealed record RedeemReleaseResult(RedeemReleaseOutcome Outcome, RedeemedRelease? Release)

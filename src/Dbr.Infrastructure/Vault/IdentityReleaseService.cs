@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Removals;
 using Dbr.Domain.Vault;
 using Dbr.Infrastructure.Persistence;
 using Dbr.Infrastructure.Tenancy;
@@ -32,6 +33,7 @@ public sealed class IdentityReleaseService(
     IIdentityReleaseMinter minter,
     DbrDbContext core,
     IProfileService profiles,
+    ExposureSourceReader listings,
     IdentityReleaseLookup lookup,
     TenantContext tenantContext,
     TimeProvider clock)
@@ -112,6 +114,40 @@ public sealed class IdentityReleaseService(
                 stored.RemovalJobId,
                 stored.BrokerId,
                 stored.Fields,
-                identity));
+                identity,
+                await ListingForAsync(stored, cancellationToken).ConfigureAwait(false)));
+    }
+
+    /// <summary>
+    /// The listing an attempt's demand cites, if it cites one.
+    /// </summary>
+    /// <remarks>
+    /// Only for a grant minted for an attempt: a scan leg is what produces a listing and has
+    /// none to be handed. The demand is found through the attempt rather than carried on the
+    /// grant, so the row that was written when the grant was minted stays exactly as narrow
+    /// as it was, and what is opened is decided by what the demand says now.
+    /// </remarks>
+    private async Task<Uri?> ListingForAsync(StoredIdentityRelease stored, CancellationToken cancellationToken)
+    {
+        if (stored.RemovalJobId is not { } jobId)
+        {
+            return null;
+        }
+
+        var exposureId = await (
+            from job in core.Set<RemovalJob>().AsNoTracking()
+            join request in core.Set<RemovalRequest>().AsNoTracking()
+                on job.RemovalRequestId equals request.Id
+            where job.Id == jobId
+            select request.ExposureId)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (exposureId is not { } cited)
+        {
+            return null;
+        }
+
+        return await listings.ReadAsync(stored.TenantId, cited, cancellationToken).ConfigureAwait(false);
     }
 }

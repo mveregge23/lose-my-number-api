@@ -5,6 +5,7 @@ using Dbr.Domain.Catalog;
 using Dbr.Domain.Connectors;
 using Dbr.Domain.Mail;
 using Dbr.Domain.Profiles;
+using Dbr.Domain.Recipes;
 
 namespace Dbr.Removals;
 
@@ -93,14 +94,18 @@ public sealed class TemplatedEmailConnector : IBrokerConnector
                 Retryable: false);
         }
 
-        var subject = template.Subject.RenderText(context.ReleasedIdentity);
+        // The listing rides along with the identity. It is the one thing the wording may cite
+        // that is not the person, and a demand opened without one simply loses that line.
+        var about = new RenderSubject(context.ReleasedIdentity, context.SourceRef);
+
+        var subject = template.Subject.RenderText(about);
 
         if (subject.Value is null)
         {
             return Incomplete(subject.Missing);
         }
 
-        var body = template.Body.RenderText(context.ReleasedIdentity);
+        var body = template.Body.RenderText(about);
 
         if (body.Value is null)
         {

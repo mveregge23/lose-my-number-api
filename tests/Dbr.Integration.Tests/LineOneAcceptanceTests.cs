@@ -205,6 +205,12 @@ public class LineOneAcceptanceTests(PostgresFixture postgres, OpenBaoFixture ope
         // same record next month has honoured the first and not the second.
         Assert.Contains("1798.120", sent.Body, StringComparison.Ordinal);
 
+        // And the listing the scan found, which is what the company's own opt-out flow would
+        // ask for. It was written to the vault by the scan leg, released to the attempt with
+        // the identity, and cited by the wording — the second thing the message proves went
+        // the whole way.
+        Assert.Contains($"Listing: {Listing}", sent.Body, StringComparison.Ordinal);
+
         // And what it did not receive. The wording names no date of birth, so nothing
         // decrypted one — the declaration and the release agreeing, end to end.
         Assert.DoesNotContain("1985", sent.Body, StringComparison.Ordinal);
@@ -467,29 +473,7 @@ public class LineOneAcceptanceTests(PostgresFixture postgres, OpenBaoFixture ope
             return null;
         }
 
-        return new ReleaseResponse(
-            release.ScanId,
-            release.RemovalJobId,
-            release.BrokerId,
-            [.. release.Fields.Select(IdentityVocabulary.ToWire)],
-            release.Identity.Names,
-            [
-                .. release.Identity.Addresses.Select(address => new ReleasedAddress(
-                    address.Id,
-                    address.Line1,
-                    address.Line2,
-                    address.City,
-                    address.Region,
-                    address.PostalCode,
-                    address.Country)),
-            ],
-            [
-                .. release.Identity.Contacts.Select(contact => new ReleasedContact(
-                    contact.Id,
-                    contact.Kind.ToString().ToLowerInvariant(),
-                    contact.Value)),
-            ],
-            release.Identity.DateOfBirth);
+        return ReleaseResponse.From(release);
     }
 
     private async Task<ReportFindingsResponse?> ReportAsync(

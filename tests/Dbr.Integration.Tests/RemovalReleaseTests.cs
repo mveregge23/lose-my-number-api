@@ -129,6 +129,46 @@ public class RemovalReleaseTests(PostgresFixture postgres, OpenBaoFixture openBa
     }
 
     /// <summary>
+    /// The listing the demand cites comes out of the vault with the identity.
+    /// </summary>
+    /// <remarks>
+    /// A finding's address is a copy of the person's identity and is never opened on the
+    /// ordinary API path. It is opened here, for the one party there is no point withholding
+    /// it from: the company being asked to take the listing down. The demand is found through
+    /// the attempt rather than carried on the grant, so the grant row stays as narrow as it
+    /// was minted.
+    /// </remarks>
+    [Fact]
+    public async Task A_grant_for_an_attempt_at_a_cited_listing_opens_the_listing()
+    {
+        var account = await OpenAccountAsync();
+        var listing = new Uri("https://people.example/alex-whitfield/p1");
+        var exposureId = await AFindingAsync(account, listing);
+        var jobId = await AnAttemptAsync(account, exposureId);
+
+        var minted = await MintAsync(account.TenantId, jobId, _brokerId, IdentityField.Names);
+        var redeemed = await RedeemAsync(minted.Release!.Token);
+
+        Assert.Equal(RedeemReleaseOutcome.Granted, redeemed.Outcome);
+        Assert.Equal(listing, redeemed.Release!.Listing);
+    }
+
+    [Fact]
+    public async Task A_grant_for_an_attempt_that_cites_nothing_opens_no_listing()
+    {
+        // A demand made without having found anything is an ordinary demand, and there is
+        // nothing to open: null rather than a refusal.
+        var account = await OpenAccountAsync();
+        var jobId = await AnAttemptAsync(account);
+
+        var minted = await MintAsync(account.TenantId, jobId, _brokerId, IdentityField.Names);
+        var redeemed = await RedeemAsync(minted.Release!.Token);
+
+        Assert.Equal(RedeemReleaseOutcome.Granted, redeemed.Outcome);
+        Assert.Null(redeemed.Release!.Listing);
+    }
+
+    /// <summary>
     /// It opens the groups it named and leaves the rest in the vault.
     /// </summary>
     [Fact]
@@ -316,11 +356,50 @@ public class RemovalReleaseTests(PostgresFixture postgres, OpenBaoFixture openBa
     }
 
     /// <summary>One dispatched attempt, written the way the dispatcher writes one.</summary>
-    private async Task<Guid> AnAttemptAsync(Account account)
+    /// <summary>
+    /// A finding for this account at the company, written the way the scan leg writes one:
+    /// the row in core, the address encrypted in the vault under its own data key.
+    /// </summary>
+    private async Task<Guid> AFindingAsync(Account account, Uri listing)
+    {
+        var exposureId = Guid.NewGuid();
+        var scanId = await ScanOfAsync(account);
+
+        using var scope = _factory.Services.CreateScope();
+        var keys = scope.ServiceProvider.GetRequiredService<IKeyManagementProvider>();
+        var generated = await keys.GenerateDataKeyAsync(account.TenantId, TestContext.Current.CancellationToken);
+
+        byte[] encrypted;
+
+        using (generated.Key)
+        {
+            encrypted = Dbr.Infrastructure.Vault.ExposureSourceCipher.Encrypt(
+                generated.Key,
+                new Dbr.Infrastructure.Vault.ExposureSourceBinding(account.TenantId, exposureId),
+                listing.AbsoluteUri);
+        }
+
+        await postgres.ExecuteAsOwnerAsync(
+            $"""
+             INSERT INTO vault.exposure_source (exposure_id, tenant_id, wrapped_data_key, encrypted_source_ref)
+                 VALUES ('{exposureId}', '{account.TenantId}', '{generated.Wrapped}',
+                         decode('{Convert.ToHexString(encrypted)}', 'hex'));
+
+             INSERT INTO public.exposure
+                 (id, tenant_id, scan_id, privacy_profile_id, broker_id, status, confidence,
+                  discovered_at, source_ref_digest)
+                 VALUES ('{exposureId}', '{account.TenantId}', '{scanId}', '{account.ProfileId}',
+                         '{_brokerId}', 'new', 0.5, now(), decode(md5(random()::text), 'hex'));
+             """);
+
+        return exposureId;
+    }
+
+    private async Task<Guid> AnAttemptAsync(Account account, Guid? exposureId = null)
     {
         var (status, body) = await _api.PostAsync(
             RemovalsPath,
-            new { brokerId = _brokerId, requestType = "delete" },
+            new { brokerId = _brokerId, requestType = "delete", exposureId },
             account.Token);
 
         Assert.Equal(HttpStatusCode.Accepted, status);

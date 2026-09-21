@@ -8,20 +8,40 @@ using Dbr.Domain.Profiles;
 namespace Dbr.Domain.Recipes;
 
 /// <summary>
+/// What a template is written against: the identity released for this attempt, and the
+/// listing the demand is about, when there is one.
+/// </summary>
+/// <param name="Listing">
+/// The listing that prompted the demand, or <see langword="null"/> when none did. A search
+/// has none by definition — it is the thing that produces one — and a demand may have none,
+/// since the right to be deleted does not depend on having been found first.
+/// </param>
+public sealed record RenderSubject(ProfileIdentityFields Identity, Uri? Listing);
+
+/// <summary>
 /// One thing a recipe may write into a query, and the group it comes out of.
 /// </summary>
 /// <param name="Path">How it is written between the braces.</param>
-/// <param name="Field">The group of the identity it reads, and therefore the group a
-/// recipe naming it causes to be released.</param>
+/// <param name="Field">
+/// The group of the identity it reads, and therefore the group a recipe naming it causes to
+/// be released — or <see langword="null"/> for the one kind of placeholder that reads the
+/// demand rather than the identity. Those cause nothing to be decrypted that was not
+/// already released for the attempt, and they are optional in prose: a demand with no
+/// listing loses the line that would have cited one, rather than being refused.
+/// </param>
 /// <param name="Read">
-/// How the value is got. Returns <see langword="null"/> when the profile has nothing there,
-/// which is a real answer rather than a fault — a search that cannot run without a city and
-/// is given a profile with no address is unsupported, not broken.
+/// How the value is got. Returns <see langword="null"/> when there is nothing there, which
+/// is a real answer rather than a fault — a search that cannot run without a city and is
+/// given a profile with no address is unsupported, not broken.
 /// </param>
 public sealed record RecipePlaceholder(
     string Path,
-    IdentityField Field,
-    Func<ProfileIdentityFields, string?> Read);
+    IdentityField? Field,
+    Func<RenderSubject, string?> Read)
+{
+    /// <summary>Whether this reads the demand rather than the identity.</summary>
+    public bool ReadsDemand => Field is null;
+}
 
 /// <summary>
 /// The closed set of things a recipe may say.
@@ -52,14 +72,14 @@ public sealed record RecipePlaceholder(
 /// </remarks>
 public static class RecipeVocabulary
 {
-    private static string? FirstName(ProfileIdentityFields identity) =>
-        identity.Names.Count > 0 ? identity.Names[0] : null;
+    private static string? FirstName(RenderSubject subject) =>
+        subject.Identity.Names.Count > 0 ? subject.Identity.Names[0] : null;
 
-    private static string? Address(ProfileIdentityFields identity, Func<ProfileAddress, string?> read) =>
-        identity.Addresses.Count > 0 ? read(identity.Addresses[0]) : null;
+    private static string? Address(RenderSubject subject, Func<ProfileAddress, string?> read) =>
+        subject.Identity.Addresses.Count > 0 ? read(subject.Identity.Addresses[0]) : null;
 
-    private static string? Contact(ProfileIdentityFields identity, ProfileContactKind kind) =>
-        identity.Contacts.FirstOrDefault(contact => contact.Kind == kind)?.Value;
+    private static string? Contact(RenderSubject subject, ProfileContactKind kind) =>
+        subject.Identity.Contacts.FirstOrDefault(contact => contact.Kind == kind)?.Value;
 
     /// <summary>Every placeholder a recipe may use, by the path it is written as.</summary>
     public static IReadOnlyDictionary<string, RecipePlaceholder> All { get; } =
@@ -73,42 +93,53 @@ public static class RecipeVocabulary
             new RecipePlaceholder(
                 "names.first",
                 IdentityField.Names,
-                identity => Part(FirstName(identity), first: true)),
+                subject => Part(FirstName(subject), first: true)),
             new RecipePlaceholder(
                 "names.last",
                 IdentityField.Names,
-                identity => Part(FirstName(identity), first: false)),
+                subject => Part(FirstName(subject), first: false)),
 
             new RecipePlaceholder(
                 "addresses.first.line1",
                 IdentityField.Addresses,
-                identity => Address(identity, address => address.Line1)),
+                subject => Address(subject, address => address.Line1)),
             new RecipePlaceholder(
                 "addresses.first.city",
                 IdentityField.Addresses,
-                identity => Address(identity, address => address.City)),
+                subject => Address(subject, address => address.City)),
             new RecipePlaceholder(
                 "addresses.first.region",
                 IdentityField.Addresses,
-                identity => Address(identity, address => address.Region)),
+                subject => Address(subject, address => address.Region)),
             new RecipePlaceholder(
                 "addresses.first.postalCode",
                 IdentityField.Addresses,
-                identity => Address(identity, address => address.PostalCode)),
+                subject => Address(subject, address => address.PostalCode)),
 
             new RecipePlaceholder(
                 "contacts.email",
                 IdentityField.Contacts,
-                identity => Contact(identity, ProfileContactKind.Email)),
+                subject => Contact(subject, ProfileContactKind.Email)),
             new RecipePlaceholder(
                 "contacts.phone",
                 IdentityField.Contacts,
-                identity => Contact(identity, ProfileContactKind.Phone)),
+                subject => Contact(subject, ProfileContactKind.Phone)),
 
             new RecipePlaceholder(
                 "dateOfBirth.year",
                 IdentityField.DateOfBirth,
-                identity => identity.DateOfBirth?.Year.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                subject => subject.Identity.DateOfBirth?.Year.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+
+            // The listing the demand is about: the one thing a demand may cite that is not
+            // part of the identity. A company's own opt-out flow usually asks for exactly
+            // this, and it names the record more precisely than a name and a city can. It
+            // reads the demand, so it releases nothing — the listing was already released
+            // to the attempt that is composing this — and it is optional in prose, because
+            // a demand made without having found anything is a legitimate demand.
+            new RecipePlaceholder(
+                "listing.url",
+                null,
+                subject => subject.Listing?.ToString()),
         }.ToDictionary(placeholder => placeholder.Path, StringComparer.Ordinal);
 
     private static string? Part(string? name, bool first)
@@ -171,6 +202,15 @@ public sealed partial class RecipeTemplate
     /// <summary>The groups of an identity this template reads.</summary>
     public IReadOnlySet<IdentityField> RequiredFields { get; }
 
+    /// <summary>
+    /// Whether this template writes the listing a demand is about.
+    /// </summary>
+    /// <remarks>
+    /// Meaningful to a demand and meaningless to a search, which is the thing that produces
+    /// a listing and so cannot cite one. A search recipe is refused for it at read time.
+    /// </remarks>
+    public bool CitesListing => _parts.OfType<RecipePlaceholder>().Any(placeholder => placeholder.ReadsDemand);
+
     [GeneratedRegex(@"\{\{\s*([^}]*?)\s*\}\}", RegexOptions.CultureInvariant)]
     private static partial Regex Placeholder();
 
@@ -211,7 +251,11 @@ public sealed partial class RecipeTemplate
             }
 
             parts.Add(placeholder);
-            fields.Add(placeholder.Field);
+
+            if (placeholder.Field is { } field)
+            {
+                fields.Add(field);
+            }
             at = match.Index + match.Length;
         }
 
@@ -234,27 +278,52 @@ public sealed partial class RecipeTemplate
     /// bug that only shows up for the people whose names contain one — and a recipe author
     /// escaping by hand would be escaping the punctuation they wrote as well.
     /// </remarks>
-    public RenderResult RenderQuery(ProfileIdentityFields identity) =>
-        Render(identity, Uri.EscapeDataString);
+    public RenderResult RenderQuery(ProfileIdentityFields identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+
+        // A query has no listing to cite and no lines to drop: a demand placeholder here is
+        // a search recipe the reader should have refused, and it renders as missing rather
+        // than as an empty parameter that searches for nobody in particular.
+        return Render(new RenderSubject(identity, null), Uri.EscapeDataString, dropLines: false);
+    }
 
     /// <summary>
-    /// Writes the identity into prose, exactly as it is held.
+    /// Writes the identity, and the listing if there is one, into prose exactly as held.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Nothing is escaped, and that is the difference from
     /// <see cref="RenderQuery"/>.</b> A demand is read by a person, so a name with an
     /// ampersand in it has to arrive as that name rather than as <c>%26</c> — and there is
     /// no punctuation here that a value could break out of, because the result is not
     /// parsed by anything. The two destinations are named separately rather than sharing a
     /// method with a flag, so that neither can be reached by forgetting to pass one.
+    /// </para>
+    /// <para>
+    /// <b>A line citing a listing the demand does not have is dropped whole.</b> The
+    /// alternative readings are worse: refusing the demand would make a listing a
+    /// precondition of asking to be deleted, and rendering the line with a hole in it would
+    /// send a company "Listing: " and nothing after. The rule is the line rather than the
+    /// placeholder, because the words around a citation are about the citation.
+    /// </para>
     /// </remarks>
-    public RenderResult RenderText(ProfileIdentityFields identity) =>
-        Render(identity, value => value);
-
-    private RenderResult Render(ProfileIdentityFields identity, Func<string, string> escape)
+    public RenderResult RenderText(RenderSubject subject)
     {
-        ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(subject);
 
+        return Render(subject, value => value, dropLines: true);
+    }
+
+    /// <summary>Prose from an identity alone, for the templates and tests that cite nothing.</summary>
+    public RenderResult RenderText(ProfileIdentityFields identity) =>
+        RenderText(new RenderSubject(identity, null));
+
+    /// <summary>Marks where an absent listing would have gone, so its line can be found.</summary>
+    private const char Absent = '\uE000';
+
+    private RenderResult Render(RenderSubject subject, Func<string, string> escape, bool dropLines)
+    {
         var built = new StringBuilder();
 
         foreach (var part in _parts)
@@ -267,10 +336,17 @@ public sealed partial class RecipeTemplate
             }
 
             var placeholder = (RecipePlaceholder)part;
-            var value = placeholder.Read(identity);
+            var value = placeholder.Read(subject);
 
             if (string.IsNullOrWhiteSpace(value))
             {
+                if (placeholder.ReadsDemand && dropLines)
+                {
+                    built.Append(Absent);
+
+                    continue;
+                }
+
                 // Not an error and not an empty query. A search that needs a city and is
                 // given a profile with no address on file cannot do what this attempt asks
                 // of it, which is a specific answer the contract already has a name for.
@@ -280,6 +356,15 @@ public sealed partial class RecipeTemplate
             built.Append(escape(value));
         }
 
-        return RenderResult.Rendered(built.ToString());
+        var rendered = built.ToString();
+
+        if (rendered.Contains(Absent, StringComparison.Ordinal))
+        {
+            rendered = string.Join(
+                '\n',
+                rendered.Split('\n').Where(line => !line.Contains(Absent, StringComparison.Ordinal)));
+        }
+
+        return RenderResult.Rendered(rendered);
     }
 }

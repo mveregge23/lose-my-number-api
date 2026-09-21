@@ -238,6 +238,18 @@ public static class SearchRecipeReader
             return null;
         }
 
+        if (template.CitesListing)
+        {
+            // A search is what produces a listing. One that wrote a listing into its query
+            // would be searching for a page it has not found yet, and at run time the
+            // placeholder would render as missing and every leg would finish unsupported.
+            problems.Add(
+                $"'{name}' writes the listing into its query. A search has no listing — it is "
+                + "the thing that finds one — and only the wording of a demand may cite one.");
+
+            return null;
+        }
+
         if (template.RequiredFields.Count == 0)
         {
             problems.Add(

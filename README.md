@@ -637,6 +637,15 @@ Nothing in the shipped wording mentions a date of birth, so a demand made with i
 to be released — not because nothing asks at the wrong moment, but because there is no moment at
 which it could. There is a test asserting exactly that against the files that ship.
 
+**The one thing a demand may cite that is not the person is the listing.** `{{listing.url}}` writes
+the address of the finding the demand is about — what a company's own opt-out flow usually asks
+for, and a more precise name for the record than a name and a city. It reads the demand rather than
+the identity, so it declares no group: the listing is opened from the vault by the same grant that
+opens the identity, for the one party there is no point withholding it from. And it is optional in
+prose — a demand made without having found anything is a legitimate demand, and the line that
+would have cited a listing is dropped whole rather than sent with a hole in it. A search recipe
+cannot write it; a search is the thing that produces a listing.
+
 **Missing wording is a refusal, not a fallback.** A demand under an act with no reviewed template
 fails as unsupported and nothing is sent. Sending the nearest wording instead would claim an
 obligation in somebody's name that nothing established, and a company that checked would be right to
@@ -1430,7 +1439,8 @@ than code:
 
 `{{...}}` is a closed vocabulary (`names.full`, `names.first`, `names.last`,
 `addresses.first.line1|city|region|postalCode`, `contacts.email`, `contacts.phone`,
-`dateOfBirth.year`) and anything else is refused when the recipe is read. Values are escaped where
+`dateOfBirth.year`, and — for a demand's wording only, never a search — `listing.url`) and anything
+else is refused when the recipe is read. Values are escaped where
 they are written, so a name containing an ampersand cannot end a query parameter early.
 
 `noResults` is the most load-bearing line in the file. Without it, a page whose result blocks have

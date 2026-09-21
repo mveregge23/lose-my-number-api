@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Profiles;
+using Dbr.Domain.Vault;
+
 namespace Dbr.Infrastructure.InternalEdge;
 
 /// <summary>
@@ -71,21 +74,65 @@ public sealed record ReleaseResponse(
     IReadOnlyList<string> Names,
     IReadOnlyList<ReleasedAddress> Addresses,
     IReadOnlyList<ReleasedContact> Contacts,
-    DateOnly? DateOfBirth)
+    DateOnly? DateOfBirth,
+    Uri? Listing = null)
 {
+    /// <summary>
+    /// The wire shape of a redeemed grant, written once.
+    /// </summary>
+    /// <remarks>
+    /// The endpoint and the tests that stand in for it both build this from the same domain
+    /// record, and a second copy of the mapping is how a field gets dropped on one side and
+    /// not the other — which is what happened to the listing before this existed.
+    /// </remarks>
+    public static ReleaseResponse From(RedeemedRelease release)
+    {
+        ArgumentNullException.ThrowIfNull(release);
+
+        return new ReleaseResponse(
+            release.ScanId,
+            release.RemovalJobId,
+            release.BrokerId,
+            [.. release.Fields.Select(IdentityVocabulary.ToWire)],
+            release.Identity.Names,
+            [
+                .. release.Identity.Addresses.Select(address => new ReleasedAddress(
+                    address.Id,
+                    address.Line1,
+                    address.Line2,
+                    address.City,
+                    address.Region,
+                    address.PostalCode,
+                    address.Country)),
+            ],
+
+            // Lower-cased, which is how the public API already spells a contact's kind. One
+            // spelling for one fact: a worker filling a broker's form and a client rendering
+            // a profile should not be reading two vocabularies for the same field.
+            [
+                .. release.Identity.Contacts.Select(contact => new ReleasedContact(
+                    contact.Id,
+                    contact.Kind.ToString().ToLowerInvariant(),
+                    contact.Value)),
+            ],
+            release.Identity.DateOfBirth,
+            release.Listing);
+    }
+
     /// <summary>
     /// Names the type, counts what it holds, and prints none of it.
     /// </summary>
     /// <remarks>
     /// The same refusal the vault-side identity types carry. This one matters more than
     /// most: it is handled by the process that also runs third-party page scripts, which
-    /// is the last place a name should end up in a log line.
+    /// is the last place a name should end up in a log line. The listing is withheld with
+    /// the rest — a broker's profile URL spells out the name and the city.
     /// </remarks>
     public override string ToString() =>
         $"ReleaseResponse {{ ScanId = {ScanId}, RemovalJobId = {RemovalJobId}, "
         + $"BrokerId = {BrokerId}, "
         + $"Fields = {Fields.Count}, Names = {Names.Count}, Addresses = {Addresses.Count}, "
-        + $"Contacts = {Contacts.Count}, [withheld] }}";
+        + $"Contacts = {Contacts.Count}, Listing = {(Listing is null ? "none" : "cited")}, [withheld] }}";
 }
 
 /// <summary>One listing a leg is asking to have recorded.</summary>

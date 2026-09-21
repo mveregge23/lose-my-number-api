@@ -62,6 +62,31 @@ public class TemplatedEmailConnectorTests
         Assert.DoesNotContain("%26", sender.Sent[0].Body, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The shipped wording cites the listing when the demand has one, and says nothing
+    /// about a listing when it does not.
+    /// </summary>
+    /// <remarks>
+    /// A company's own opt-out flow usually asks for exactly the listing URL, so the demand
+    /// names the record more precisely than a name and a city can. And a demand opened
+    /// without a listing is a legitimate demand: the line goes, the rest is sent.
+    /// </remarks>
+    [Fact]
+    public async Task A_demand_cites_the_listing_it_is_about_and_only_then()
+    {
+        var sender = new RecordingSender();
+        var connector = Build(sender);
+
+        await connector.ExecuteAsync(
+            Context(listing: new Uri("https://people.example/alex-whitfield/p1")),
+            TestContext.Current.CancellationToken);
+        await connector.ExecuteAsync(Context(), TestContext.Current.CancellationToken);
+
+        Assert.Contains("Listing: https://people.example/alex-whitfield/p1", sender.Sent[0].Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Listing:", sender.Sent[1].Body, StringComparison.Ordinal);
+        Assert.Contains("Name: Alex", sender.Sent[1].Body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Wording_that_does_not_exist_is_not_improvised()
     {
@@ -195,7 +220,7 @@ public class TemplatedEmailConnectorTests
     {
         var subject = RecipeTemplate.TryParse("Request to delete personal information", out _)!;
         var body = RecipeTemplate.TryParse(
-            "Name: {{names.full}}\nCity: {{addresses.first.city}}\nEmail: {{contacts.email}}",
+            "Name: {{names.full}}\nCity: {{addresses.first.city}}\nEmail: {{contacts.email}}\nListing: {{listing.url}}",
             out _)!;
 
         return new DemandTemplate(DemandTemplateKey.For("CCPA", LegalRequestType.Delete), subject, body);
@@ -203,7 +228,8 @@ public class TemplatedEmailConnectorTests
 
     private static ConnectorContext Context(
         ProfileIdentityFields? identity = null,
-        string? statute = "CCPA") =>
+        string? statute = "CCPA",
+        Uri? listing = null) =>
         new(
             Guid.NewGuid(),
             Guid.NewGuid(),
@@ -215,7 +241,7 @@ public class TemplatedEmailConnectorTests
                 statute,
                 new Uri("https://example.test/ccpa")),
             identity ?? Alex,
-            null,
+            listing,
             null,
             1);
 
