@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Profiles;
+using Dbr.Domain.Search;
 using Dbr.Domain.Tenancy;
 
 namespace Dbr.Domain.Monitoring;
@@ -85,4 +87,64 @@ public class Exposure : ITenantScoped
     /// </para>
     /// </remarks>
     public byte[]? SourceRefDigest { get; set; }
+
+    /// <summary>
+    /// How closely the listing agreed with each group of the identity, or
+    /// <see langword="null"/> where the page showed nothing to compare.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The reading the confidence score was computed from, kept rather than folded away.
+    /// The score says how sure we are; this says what the company was seen to hold — and
+    /// that is what a demand citing this finding is allowed to disclose. A page that showed
+    /// a name and a city has no business receiving a home address and an email in the
+    /// request to remove it.
+    /// </para>
+    /// <para>
+    /// Not identity data: it says a name agreed, never which name. Four nulls together
+    /// mean the row predates these columns, since a candidate that agreed with nothing is
+    /// never recorded.
+    /// </para>
+    /// </remarks>
+    public MatchStrength? AgreedNames { get; set; }
+
+    public MatchStrength? AgreedAddresses { get; set; }
+
+    public MatchStrength? AgreedContacts { get; set; }
+
+    public MatchStrength? AgreedDateOfBirth { get; set; }
+
+    /// <summary>What the listing agreed with, by group, for the groups it agreed with at all.</summary>
+    public IReadOnlyDictionary<IdentityField, MatchStrength> Agreement
+    {
+        get
+        {
+            var agreement = new Dictionary<IdentityField, MatchStrength>();
+
+            if (AgreedNames is { } names)
+            {
+                agreement[IdentityField.Names] = names;
+            }
+
+            if (AgreedAddresses is { } addresses)
+            {
+                agreement[IdentityField.Addresses] = addresses;
+            }
+
+            if (AgreedContacts is { } contacts)
+            {
+                agreement[IdentityField.Contacts] = contacts;
+            }
+
+            if (AgreedDateOfBirth is { } dateOfBirth)
+            {
+                agreement[IdentityField.DateOfBirth] = dateOfBirth;
+            }
+
+            return agreement;
+        }
+    }
+
+    /// <summary>Whether the finding recorded what the page showed at all.</summary>
+    public bool RecordsAgreement => Agreement.Count > 0;
 }

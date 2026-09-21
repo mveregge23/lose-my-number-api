@@ -41,7 +41,8 @@ body: |
   published privacy commitments in respect of the person identified below.
 
   Name: {{names.full}}
-  Address: {{addresses.first.line1}}, {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
+  Street: {{addresses.first.line1}}
+  City: {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
   Email: {{contacts.email}}
   Listing: {{listing.url}}
 

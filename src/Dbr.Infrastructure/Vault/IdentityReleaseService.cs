@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Monitoring;
 using Dbr.Domain.Profiles;
 using Dbr.Domain.Removals;
+using Dbr.Domain.Search;
 using Dbr.Domain.Vault;
 using Dbr.Infrastructure.Persistence;
 using Dbr.Infrastructure.Tenancy;
@@ -108,18 +110,21 @@ public sealed class IdentityReleaseService(
             return RedeemReleaseResult.Refused();
         }
 
+        var cited = await CitedAsync(stored, cancellationToken).ConfigureAwait(false);
+
         return RedeemReleaseResult.Granted(
             new RedeemedRelease(
                 stored.ScanId,
                 stored.RemovalJobId,
                 stored.BrokerId,
                 stored.Fields,
-                identity,
-                await ListingForAsync(stored, cancellationToken).ConfigureAwait(false)));
+                cited.CoarseAddress ? Coarsened(identity) : identity,
+                cited.Listing));
     }
 
     /// <summary>
-    /// The listing an attempt's demand cites, if it cites one.
+    /// The listing an attempt's demand cites, and whether its address was only partly
+    /// seen — or nothing, for a grant that cites nothing.
     /// </summary>
     /// <remarks>
     /// Only for a grant minted for an attempt: a scan leg is what produces a listing and has
@@ -127,27 +132,60 @@ public sealed class IdentityReleaseService(
     /// grant, so the row that was written when the grant was minted stays exactly as narrow
     /// as it was, and what is opened is decided by what the demand says now.
     /// </remarks>
-    private async Task<Uri?> ListingForAsync(StoredIdentityRelease stored, CancellationToken cancellationToken)
+    private async Task<(Uri? Listing, bool CoarseAddress)> CitedAsync(
+        StoredIdentityRelease stored,
+        CancellationToken cancellationToken)
     {
         if (stored.RemovalJobId is not { } jobId)
         {
-            return null;
+            return (null, false);
         }
 
-        var exposureId = await (
+        var demand = await (
             from job in core.Set<RemovalJob>().AsNoTracking()
             join request in core.Set<RemovalRequest>().AsNoTracking()
                 on job.RemovalRequestId equals request.Id
             where job.Id == jobId
-            select request.ExposureId)
+            select new { request.ExposureId })
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        if (exposureId is not { } cited)
+        if (demand?.ExposureId is not { } cited)
         {
-            return null;
+            return (null, false);
         }
 
-        return await listings.ReadAsync(stored.TenantId, cited, cancellationToken).ConfigureAwait(false);
+        var agreedAddresses = await core.Set<Exposure>()
+            .AsNoTracking()
+            .Where(row => row.Id == cited)
+            .Select(row => row.AgreedAddresses)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var listing = await listings.ReadAsync(stored.TenantId, cited, cancellationToken).ConfigureAwait(false);
+
+        return (listing, agreedAddresses == MatchStrength.Partial);
     }
+
+    /// <summary>
+    /// The identity with its addresses reduced to city and region.
+    /// </summary>
+    /// <remarks>
+    /// A listing that agreed with an address only partly showed a city, or a street, and
+    /// not both — and on a results page it is almost always the city, with the street
+    /// behind the paywall. A demand citing such a listing tells the company where the
+    /// person lives to the same precision the company already displays, and no more: the
+    /// street and the postal code never leave the vault. The identity is rewritten here,
+    /// on the side that holds the keys, so the worker never receives what it must not send.
+    /// </remarks>
+    private static ProfileIdentityFields Coarsened(ProfileIdentityFields identity) =>
+        identity with
+        {
+            Addresses = [.. identity.Addresses.Select(address => address with
+            {
+                Line1 = string.Empty,
+                Line2 = null,
+                PostalCode = null,
+            })],
+        };
 }

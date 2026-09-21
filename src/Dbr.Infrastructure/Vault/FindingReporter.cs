@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Monitoring;
+using Dbr.Domain.Profiles;
 using Dbr.Domain.Removals;
 using Dbr.Domain.Search;
 using Dbr.Domain.Vault;
@@ -225,6 +226,17 @@ public sealed class FindingReporter(
             Confidence = confidence,
             DiscoveredAt = now,
             SourceRefDigest = digest,
+
+            // The reading the score came from, kept: it is what a demand citing this
+            // finding may disclose. A candidate reports each group once, which the contract
+            // checked before this ran, so the lookup is total rather than a merge.
+            AgreedNames = Agreed(listing, IdentityField.Names),
+            AgreedAddresses = Agreed(listing, IdentityField.Addresses),
+            AgreedContacts = Agreed(listing, IdentityField.Contacts),
+            AgreedDateOfBirth = Agreed(listing, IdentityField.DateOfBirth),
         });
     }
+
+    private static MatchStrength? Agreed(ReportedListing listing, IdentityField field) =>
+        listing.Matches.FirstOrDefault(match => match.Field == field)?.Strength;
 }

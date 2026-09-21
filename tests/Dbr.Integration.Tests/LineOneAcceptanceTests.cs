@@ -198,8 +198,14 @@ public class LineOneAcceptanceTests(PostgresFixture postgres, OpenBaoFixture ope
         // one place it is finally visible.
         Assert.Contains("Alex Whitfield", sent.Body, StringComparison.Ordinal);
         Assert.Contains("12 Rowan Lane", sent.Body, StringComparison.Ordinal);
-        Assert.Contains("alex@example.test", sent.Body, StringComparison.Ordinal);
         Assert.Contains("1798.105", sent.Body, StringComparison.Ordinal);
+
+        // And not the email. The listing the demand cites agreed on a name and an address
+        // and showed no contact point, so the grant never covered contacts and the wording
+        // dropped the line — the company receives what it was seen to hold, and no more.
+        // The profile has the address on file; the message is the proof it stayed there.
+        Assert.DoesNotContain("alex@example.test", sent.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Email:", sent.Body, StringComparison.Ordinal);
 
         // Both rights in the one message. A company that deletes today and re-acquires the
         // same record next month has honoured the first and not the second.

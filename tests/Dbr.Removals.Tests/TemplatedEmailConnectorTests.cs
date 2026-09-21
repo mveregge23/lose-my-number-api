@@ -116,8 +116,17 @@ public class TemplatedEmailConnectorTests
         Assert.Empty(sender.Sent);
     }
 
+    /// <summary>
+    /// A detail the release did not carry is left out of the demand, not fatal to it.
+    /// </summary>
+    /// <remarks>
+    /// The release is narrowed to what the listing showed, so an identity arriving with no
+    /// contacts is the ordinary case for a company whose page showed none. The line goes;
+    /// the demand is sent. The old behaviour — refuse the whole demand for one empty line —
+    /// would have made every detail a precondition of asking to be deleted.
+    /// </remarks>
     [Fact]
-    public async Task A_profile_missing_what_the_wording_needs_cannot_make_the_demand()
+    public async Task A_detail_the_release_did_not_carry_is_left_out_rather_than_fatal()
     {
         var sender = new RecordingSender();
         var connector = Build(sender);
@@ -128,10 +137,31 @@ public class TemplatedEmailConnectorTests
             Context(identity: noEmail),
             TestContext.Current.CancellationToken);
 
+        Assert.IsType<ConnectorResult.AwaitingBrokerResponse>(result);
+
+        var sent = Assert.Single(sender.Sent);
+        Assert.Contains("Name: Alex", sent.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("Email:", sent.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_release_carrying_no_part_of_the_person_cannot_make_the_demand()
+    {
+        // The line that still refuses: a wording that asked for the person and got nothing
+        // names nobody, and there is no request to make.
+        var sender = new RecordingSender();
+        var connector = Build(sender);
+
+        var nobody = Alex with { Names = [], Addresses = [], Contacts = [] };
+
+        var result = await connector.ExecuteAsync(
+            Context(identity: nobody),
+            TestContext.Current.CancellationToken);
+
         var failed = Assert.IsType<ConnectorResult.Failed>(result);
 
-        // Unsupported and not retryable: another attempt against the same profile writes the
-        // same gap.
+        // Unsupported and not retryable: another attempt against the same release writes
+        // the same gap.
         Assert.Equal(ConnectorFailureReason.Unsupported, failed.Reason);
         Assert.False(failed.Retryable);
         Assert.Empty(sender.Sent);

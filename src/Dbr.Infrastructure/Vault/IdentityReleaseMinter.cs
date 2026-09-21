@@ -5,6 +5,7 @@ using Dbr.Domain.Catalog;
 using Dbr.Domain.Monitoring;
 using Dbr.Domain.Profiles;
 using Dbr.Domain.Removals;
+using Dbr.Domain.Search;
 using Dbr.Domain.Vault;
 using Dbr.Infrastructure.Persistence;
 using Dbr.Infrastructure.Tenancy;
@@ -135,13 +136,67 @@ public sealed class IdentityReleaseMinter(
                 core.Set<RemovalRequest>(),
                 job => job.RemovalRequestId,
                 request => request.Id,
-                (job, request) => new { job.Status, request.PrivacyProfileId, request.BrokerId })
+                (job, request) => new { job.Status, request.PrivacyProfileId, request.BrokerId, request.ExposureId })
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
         if (work is null)
         {
             return MintReleaseResult.Failed(MintReleaseOutcome.JobNotFound);
+        }
+
+        // A demand that cites a listing may disclose what the listing showed and nothing
+        // more. The connector declares what its wording can write; the finding says what
+        // the company was seen to hold; the grant covers the intersection. A company whose
+        // page showed a name and a city receives no email in the request to remove it,
+        // because there is no moment at which one could be decrypted. A demand citing
+        // nothing is about the person rather than a page and is released as declared.
+        if (work.ExposureId is { } exposureId)
+        {
+            var agreement = await core.Set<Exposure>()
+                .AsNoTracking()
+                .Where(row => row.Id == exposureId)
+                .Select(row => new { row.AgreedNames, row.AgreedAddresses, row.AgreedContacts, row.AgreedDateOfBirth })
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            var shown = new List<IdentityField>();
+
+            if (agreement?.AgreedNames is MatchStrength.Exact or MatchStrength.Partial)
+            {
+                shown.Add(IdentityField.Names);
+            }
+
+            if (agreement?.AgreedAddresses is MatchStrength.Exact or MatchStrength.Partial)
+            {
+                shown.Add(IdentityField.Addresses);
+            }
+
+            if (agreement?.AgreedContacts is MatchStrength.Exact or MatchStrength.Partial)
+            {
+                shown.Add(IdentityField.Contacts);
+            }
+
+            if (agreement?.AgreedDateOfBirth is MatchStrength.Exact or MatchStrength.Partial)
+            {
+                shown.Add(IdentityField.DateOfBirth);
+            }
+
+            // A finding recorded before agreement was kept has nothing to narrow by, and a
+            // recorded listing always agreed with something — so an empty reading is a row
+            // that predates the columns, not a page that showed nothing.
+            var recorded = agreement is not null
+                && (agreement.AgreedNames ?? agreement.AgreedAddresses ?? agreement.AgreedContacts ?? agreement.AgreedDateOfBirth) is not null;
+
+            if (recorded)
+            {
+                wanted = [.. wanted.Where(shown.Contains)];
+
+                if (wanted.Length == 0)
+                {
+                    return MintReleaseResult.Failed(MintReleaseOutcome.NothingRequested);
+                }
+            }
         }
 
         // An attempt that already ran minting a fresh decryption right is the case this

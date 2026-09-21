@@ -111,11 +111,5 @@ public static class FindingEndpoints
         return matches.Count > 0 ? new ReportedListing(source, matches) : null;
     }
 
-    private static MatchStrength? Strength(string? value) => value switch
-    {
-        "exact" => MatchStrength.Exact,
-        "partial" => MatchStrength.Partial,
-        "conflicting" => MatchStrength.Conflicting,
-        _ => null,
-    };
+    private static MatchStrength? Strength(string? value) => IdentityVocabulary.ParseStrength(value);
 }

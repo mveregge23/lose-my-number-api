@@ -132,6 +132,37 @@ public class FindingSourceTests(PostgresFixture postgres, OpenBaoFixture openBao
         Assert.Equal(0, inVault);
     }
 
+    /// <summary>
+    /// What the listing agreed with is kept beside the finding, group by group.
+    /// </summary>
+    /// <remarks>
+    /// The reading the score came from, and what a demand citing this finding is allowed to
+    /// disclose. Group and strength only — the row says a name agreed, never which name,
+    /// which the test above already holds every column to.
+    /// </remarks>
+    [Fact]
+    public async Task What_the_listing_agreed_with_is_kept_beside_the_finding()
+    {
+        var leg = await LegAsync();
+
+        await ReportAsync(
+            leg.Token,
+            [
+                new ReportedListing(
+                    Listing,
+                    [
+                        new FieldMatch(IdentityField.Names, MatchStrength.Partial),
+                        new FieldMatch(IdentityField.Addresses, MatchStrength.Exact),
+                    ]),
+            ]);
+
+        var agreed = await postgres.QueryAsOwnerAsync<string>(
+            "SELECT agreed_names || '/' || agreed_addresses || '/' || coalesce(agreed_contacts, 'none') "
+            + "|| '/' || coalesce(agreed_date_of_birth, 'none') FROM public.exposure");
+
+        Assert.Equal("partial/exact/none/none", agreed);
+    }
+
     [Fact]
     public async Task The_address_comes_back_out_of_the_vault()
     {

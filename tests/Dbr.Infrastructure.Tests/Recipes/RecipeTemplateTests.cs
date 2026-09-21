@@ -226,13 +226,70 @@ public class RecipeTemplateTests
     }
 
     [Fact]
-    public void An_identity_placeholder_is_still_required_even_beside_an_optional_one()
+    public void A_wording_that_asked_for_the_person_and_got_nothing_names_nobody()
     {
         var noName = Alex with { Names = [] };
 
         var rendered = Parse(Wording).RenderText(new RenderSubject(noName, null));
 
         Assert.Equal("names.full", rendered.Missing);
+    }
+
+    // ------------------------------------------------- lines, when a detail is absent
+
+    private const string Prose = "Name: {{names.full}}\nStreet: {{addresses.first.line1}}\nCity: {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}\nEmail: {{contacts.email}}\nThank you.";
+
+    [Fact]
+    public void A_line_whose_details_were_all_withheld_is_left_out()
+    {
+        // The release carried no contacts, because the listing showed none.
+        var rendered = Parse(Prose).RenderText(Alex with { Contacts = [] });
+
+        Assert.Equal(
+            "Name: Alex Whitfield\nStreet: 12 Rowan Lane\nCity: Sacramento, CA 95814\nThank you.",
+            rendered.Value);
+    }
+
+    [Fact]
+    public void A_line_with_some_details_keeps_the_ones_it_has()
+    {
+        // A coarse address: the street and the postal code withheld, the city released.
+        var coarse = Alex with
+        {
+            Addresses = [Alex.Addresses[0] with { Line1 = string.Empty, PostalCode = null }],
+            Contacts = [],
+        };
+
+        var rendered = Parse(Prose).RenderText(coarse);
+
+        Assert.Equal(
+            "Name: Alex Whitfield\nCity: Sacramento, CA\nThank you.",
+            rendered.Value);
+    }
+
+    [Fact]
+    public void A_line_with_no_placeholder_always_stays()
+    {
+        var rendered = Parse("Dear Sir or Madam,\n\nName: {{names.full}}\n\nRegards.").RenderText(Alex);
+
+        Assert.Equal("Dear Sir or Madam,\n\nName: Alex Whitfield\n\nRegards.", rendered.Value);
+    }
+
+    [Fact]
+    public void A_subject_with_no_placeholder_is_not_a_wording_that_names_nobody()
+    {
+        Assert.Equal("Request to delete", Parse("Request to delete").RenderText(Alex with { Names = [] }).Value);
+    }
+
+    [Fact]
+    public void A_query_is_still_all_or_nothing()
+    {
+        // Prose can leave a line out; a query with a hole in it searches for nobody in
+        // particular, and the contract has a name for that.
+        var rendered = Parse("/search?name={{names.full}}&zip={{addresses.first.postalCode}}")
+            .RenderQuery(Alex with { Addresses = [Alex.Addresses[0] with { PostalCode = null }] });
+
+        Assert.Equal("addresses.first.postalCode", rendered.Missing);
     }
 
     [Fact]

@@ -646,6 +646,18 @@ prose — a demand made without having found anything is a legitimate demand, an
 would have cited a listing is dropped whole rather than sent with a hole in it. A search recipe
 cannot write it; a search is the thing that produces a listing.
 
+**A demand that cites a listing discloses what the listing showed, and no more.** The scan keeps,
+beside each finding, how closely the page agreed with each group of the identity — a name partly, a
+city, no contact point — and the grant minted for an attempt at that demand covers only the groups
+the page showed. A company whose results page listed your name and city receives a request naming
+your name and city: no email, because there was no moment at which one could be decrypted, and no
+street, because a partial agreement on an address releases a coarse one — city and region, with the
+street and postal code left in the vault. The wording drops any line it has nothing for and keeps
+the values it has, so `City: Atlanta, GA` reads as an address rather than as damage. A demand that
+cites nothing is about the person rather than a page, and is released as the wording declares. What
+each finding was seen to agree on is published as `agreed` on the exposure, so a person can judge
+the score and see what a demand would say.
+
 **Missing wording is a refusal, not a fallback.** A demand under an act with no reviewed template
 fails as unsupported and nothing is sent. Sending the nearest wording instead would claim an
 obligation in somebody's name that nothing established, and a company that checked would be right to

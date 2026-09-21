@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Search;
+
 namespace Dbr.Domain.Profiles;
 
 /// <summary>
@@ -44,6 +46,30 @@ public static class IdentityVocabulary
         "addresses" => IdentityField.Addresses,
         "contacts" => IdentityField.Contacts,
         "date_of_birth" => IdentityField.DateOfBirth,
+        _ => null,
+    };
+
+    /// <summary>
+    /// How closely a listing agreed with a group, spelled once for the edge, the row and
+    /// the API. The same rule as the field names: one spelling, or the three drift.
+    /// </summary>
+    public static string ToWire(MatchStrength strength) => strength switch
+    {
+        MatchStrength.Exact => "exact",
+        MatchStrength.Partial => "partial",
+        MatchStrength.Conflicting => "conflicting",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(strength),
+            strength,
+            "Unmapped match strength. Adding one means a migration widening the check "
+            + "constraints on the exposure's agreement columns as well."),
+    };
+
+    public static MatchStrength? ParseStrength(string? value) => value switch
+    {
+        "exact" => MatchStrength.Exact,
+        "partial" => MatchStrength.Partial,
+        "conflicting" => MatchStrength.Conflicting,
         _ => null,
     };
 }

@@ -153,6 +153,96 @@ public class RemovalReleaseTests(PostgresFixture postgres, OpenBaoFixture openBa
         Assert.Equal(listing, redeemed.Release!.Listing);
     }
 
+    /// <summary>
+    /// A demand that cites a listing may disclose what the listing showed, and no more.
+    /// </summary>
+    /// <remarks>
+    /// The connector declares names, addresses and contacts; the page showed a name and a
+    /// city. The grant covers names and addresses, contacts come back empty, and the address
+    /// comes back coarse — city and region, with the street and the postal code left in the
+    /// vault, since a partial agreement on a results page is almost always a city with the
+    /// street behind the paywall.
+    /// </remarks>
+    [Fact]
+    public async Task A_grant_for_a_cited_listing_covers_only_what_the_listing_showed()
+    {
+        var account = await OpenAccountAsync();
+        var exposureId = await AFindingAsync(
+            account,
+            new Uri("https://people.example/alex-whitfield/p1"),
+            agreedNames: "partial",
+            agreedAddresses: "partial");
+        var jobId = await AnAttemptAsync(account, exposureId);
+
+        var minted = await MintAsync(
+            account.TenantId, jobId, _brokerId, IdentityField.Names, IdentityField.Addresses, IdentityField.Contacts);
+        var redeemed = await RedeemAsync(minted.Release!.Token);
+
+        var release = redeemed.Release!;
+
+        Assert.Equal([IdentityField.Names, IdentityField.Addresses], release.Fields);
+        Assert.Equal(["Alex Whitfield"], release.Identity.Names);
+        Assert.Empty(release.Identity.Contacts);
+
+        var address = Assert.Single(release.Identity.Addresses);
+        Assert.Equal("Sacramento", address.City);
+        Assert.Equal("CA", address.Region);
+        Assert.Equal(string.Empty, address.Line1);
+        Assert.Null(address.PostalCode);
+    }
+
+    [Fact]
+    public async Task A_listing_that_showed_the_whole_address_releases_it_whole()
+    {
+        var account = await OpenAccountAsync();
+        var exposureId = await AFindingAsync(
+            account,
+            new Uri("https://people.example/alex-whitfield/p1"),
+            agreedNames: "exact",
+            agreedAddresses: "exact");
+        var jobId = await AnAttemptAsync(account, exposureId);
+
+        var minted = await MintAsync(account.TenantId, jobId, _brokerId, IdentityField.Names, IdentityField.Addresses);
+        var redeemed = await RedeemAsync(minted.Release!.Token);
+
+        Assert.Equal("12 Rowan Lane", Assert.Single(redeemed.Release!.Identity.Addresses).Line1);
+    }
+
+    [Fact]
+    public async Task A_listing_that_showed_nothing_the_wording_needs_mints_no_grant()
+    {
+        // The page agreed on a date of birth and nothing else; the wording writes names
+        // and addresses. There is nothing to release, and an attempt with no grant is an
+        // attempt that cannot run — the honest outcome, rather than a demand disclosing
+        // what the company was never seen to hold.
+        var account = await OpenAccountAsync();
+        var exposureId = await AFindingAsync(
+            account,
+            new Uri("https://people.example/alex-whitfield/p1"),
+            agreedContacts: "exact");
+        var jobId = await AnAttemptAsync(account, exposureId);
+
+        var minted = await MintAsync(account.TenantId, jobId, _brokerId, IdentityField.Names, IdentityField.Addresses);
+
+        Assert.Equal(MintReleaseOutcome.NothingRequested, minted.Outcome);
+    }
+
+    [Fact]
+    public async Task A_finding_recorded_before_agreement_was_kept_narrows_nothing()
+    {
+        // Four nulls are a row that predates the columns, not a page that showed nothing —
+        // a recorded listing always agreed with something. Released as declared.
+        var account = await OpenAccountAsync();
+        var exposureId = await AFindingAsync(account, new Uri("https://people.example/alex-whitfield/p1"));
+        var jobId = await AnAttemptAsync(account, exposureId);
+
+        var minted = await MintAsync(account.TenantId, jobId, _brokerId, IdentityField.Names, IdentityField.Contacts);
+        var redeemed = await RedeemAsync(minted.Release!.Token);
+
+        Assert.Equal([IdentityField.Names, IdentityField.Contacts], redeemed.Release!.Fields);
+        Assert.NotEmpty(redeemed.Release.Identity.Contacts);
+    }
+
     [Fact]
     public async Task A_grant_for_an_attempt_that_cites_nothing_opens_no_listing()
     {
@@ -360,7 +450,12 @@ public class RemovalReleaseTests(PostgresFixture postgres, OpenBaoFixture openBa
     /// A finding for this account at the company, written the way the scan leg writes one:
     /// the row in core, the address encrypted in the vault under its own data key.
     /// </summary>
-    private async Task<Guid> AFindingAsync(Account account, Uri listing)
+    private async Task<Guid> AFindingAsync(
+        Account account,
+        Uri listing,
+        string? agreedNames = null,
+        string? agreedAddresses = null,
+        string? agreedContacts = null)
     {
         var exposureId = Guid.NewGuid();
         var scanId = await ScanOfAsync(account);
@@ -387,13 +482,16 @@ public class RemovalReleaseTests(PostgresFixture postgres, OpenBaoFixture openBa
 
              INSERT INTO public.exposure
                  (id, tenant_id, scan_id, privacy_profile_id, broker_id, status, confidence,
-                  discovered_at, source_ref_digest)
+                  discovered_at, source_ref_digest, agreed_names, agreed_addresses, agreed_contacts)
                  VALUES ('{exposureId}', '{account.TenantId}', '{scanId}', '{account.ProfileId}',
-                         '{_brokerId}', 'new', 0.5, now(), decode(md5(random()::text), 'hex'));
+                         '{_brokerId}', 'new', 0.5, now(), decode(md5(random()::text), 'hex'),
+                         {Sql(agreedNames)}, {Sql(agreedAddresses)}, {Sql(agreedContacts)});
              """);
 
         return exposureId;
     }
+
+    private static string Sql(string? value) => value is null ? "NULL" : $"'{value}'";
 
     private async Task<Guid> AnAttemptAsync(Account account, Guid? exposureId = null)
     {
@@ -473,6 +571,11 @@ public class RemovalReleaseTests(PostgresFixture postgres, OpenBaoFixture openBa
                 dateOfBirth = "1985-04-17",
                 contacts = new[] { new { kind = "email", value = "alex@example.test" } },
             },
+            token);
+
+        await _api.PostAsync(
+            $"{ProfilePath}/addresses",
+            new { line1 = "12 Rowan Lane", city = "Sacramento", region = "CA", postalCode = "95814", country = "US" },
             token);
 
         var (_, scan) = await _api.PostAsync(ScansPath, new { }, token);
