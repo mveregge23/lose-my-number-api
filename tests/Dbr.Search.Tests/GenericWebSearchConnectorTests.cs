@@ -114,12 +114,22 @@ public class GenericWebSearchConnectorTests
     /// The whole pipeline's judgement about that page, in one place.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Not the engine's job and asserted here anyway, because this is the only test that sees
     /// both halves at once: what the search reported and what the floor makes of it. Three
-    /// listings for one name, one of them shown.
+    /// listings for one name: the person, a namesake in the same city, and a stranger.
+    /// </para>
+    /// <para>
+    /// Two of them are shown, and the second is the one worth explaining. "Alex J. Whitfield"
+    /// at another Sacramento address is, on a results page, indistinguishable from Alex's own
+    /// listing at a previous address — and the first real listing this service found was
+    /// exactly that shape, a middle initial and a city, and was the person. So it clears, and
+    /// dismissing it is what a person does with the one that turns out to be somebody else.
+    /// The stranger in Bangor agrees on nothing but a surname and is not shown.
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task Only_the_listing_that_is_actually_this_person_clears_the_floor()
+    public async Task The_person_and_the_same_city_namesake_clear_the_floor_and_the_stranger_does_not()
     {
         var found = Assert.IsType<SearchResult.Found>(await SearchAsync("several-matches"));
 
@@ -132,7 +142,7 @@ public class GenericWebSearchConnectorTests
         Assert.Equal(1.5 / 4.5, scores[1], 1e-9);
         Assert.Equal(0.0, scores[2], 1e-9);
 
-        Assert.Single(scores, MatchConfidence.ClearsFloor);
+        Assert.Equal([true, true, false], scores.Select(MatchConfidence.ClearsFloor));
     }
 
     [Fact]

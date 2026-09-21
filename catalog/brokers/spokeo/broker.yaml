@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Spokeo. The first real company in this catalog, and chosen for being the one where every
+# part of the pipeline works today: its results pages are served to an ordinary HTTP client
+# with no challenge in front of them, and its opt-out page says in plain words that a
+# request may be sent by email. Fourteen people-search sites were probed on 2026-09-15 and
+# thirteen of them sit behind a Cloudflare challenge or a captcha; this is the fourteenth.
+#
+# Read from the company's own pages on 2026-09-15 — the privacy policy and the opt-out page
+# named below — and from the California registry entry cited under subjectTo.
+
+id: edea346d-25ab-4eab-a9b7-d9b4c6132625
+
+name: Spokeo
+
+# The apex, not www: the mailbox recipe completes an address from this, and mail goes to
+# privacy@spokeo.com. Searches go to https://spokeo.com/… and are redirected to www by the
+# company, which the search client follows.
+domain: spokeo.com
+
+# The opt-out page offers a form that takes a listing URL and an email address, and says
+# beside it: "or you can email us directly at privacy@spokeo.com". The privacy policy
+# names the same mailbox for appeals from the states whose statutes grant one.
+removalMethod: email
+
+# The company states no target of its own for a removal, so this is the widest window any
+# regime here grants for a deletion — the honest courtesy figure when no statute applies,
+# and what a Georgian's request records as its deadline, labelled as a courtesy.
+slaDays: 45
+
+# The form path sends a confirmation email that has to be clicked, so an address made for
+# the purpose is exactly what the process expects.
+emailContactMode: alias_preferred
+
+# One request at a time and a long pause between them. This is the first real company and
+# the only real traffic this instance sends anywhere; there is no reason yet to be faster,
+# and the failure mode of guessing high is looking like something worth blocking.
+pacing:
+  maxConcurrency: 1
+  minDelayMs: 5000
+  rateLimitThreshold: 2
+  cooldownMinutes: 60
+  formChangeThreshold: 3
+
+sourceUrl: https://www.spokeo.com/optout
+
+# Registered with the California Privacy Protection Agency as a data broker, which is the
+# company's own declaration that it is subject to the CCPA. The registry is downloadable as
+# a whole; the row is "Spokeo, Inc." with www.spokeo.com as its primary website.
+subjectTo:
+  - regime: CCPA
+    evidenceUrl: https://cppa.ca.gov/data_broker_registry/
+    confirmedBy: "@mveregge23"
+    confirmedAt: 2026-09-15

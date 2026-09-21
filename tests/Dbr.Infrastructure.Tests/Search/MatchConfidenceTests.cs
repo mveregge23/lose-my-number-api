@@ -81,6 +81,34 @@ public class MatchConfidenceTests
         Assert.True(MatchConfidence.ClearsFloor(score));
     }
 
+    /// <summary>
+    /// The first real listing this service found, and the reason the bar moved.
+    /// </summary>
+    /// <remarks>
+    /// A name carrying a middle initial the profile does not, in the right city, with no
+    /// street on the results page: partial and partial. It sat at 0.33 under a bar of 0.35,
+    /// and it was the person's own listing. Two agreements are two agreements.
+    /// </remarks>
+    [Fact]
+    public void A_partial_name_in_the_right_city_clears_the_bar()
+    {
+        var score = MatchConfidence.Score([Partial(IdentityField.Names), Partial(IdentityField.Addresses)]);
+
+        Assert.True(MatchConfidence.ClearsFloor(score));
+    }
+
+    [Theory]
+    [InlineData(IdentityField.Names)]
+    [InlineData(IdentityField.Addresses)]
+    public void One_partial_agreement_on_its_own_is_not_shown_to_anybody(IdentityField only)
+    {
+        // A partial name alone, or a city alone: what the bar exists to hold back, and what
+        // it must go on holding back after moving.
+        var score = MatchConfidence.Score([Partial(only)]);
+
+        Assert.False(MatchConfidence.ClearsFloor(score));
+    }
+
     [Fact]
     public void A_contradiction_costs_more_than_the_same_agreement_earns()
     {

@@ -81,6 +81,26 @@ public class ListingComparisonTests
     }
 
     /// <summary>
+    /// A trailing age is an age, not a surname.
+    /// </summary>
+    /// <remarks>
+    /// Found on the first real company: results pages print "Jane Doe, Age 36" at least as
+    /// often as they print a surname first, and under the surname-first reading the age
+    /// became the surname and the person's own listing read as somebody else's. The part
+    /// before the comma is the name, and there is no surname-first reading to offer as well.
+    /// </remarks>
+    [Theory]
+    [InlineData("Alex Whitfield, Age 41", MatchStrength.Exact)]
+    [InlineData("Alex Whitfield, 41", MatchStrength.Exact)]
+    [InlineData("Alex J. Whitfield, Age 41", MatchStrength.Partial)]
+    [InlineData("Alex Thornbury, Age 41", MatchStrength.Conflicting)]
+    [InlineData("Whitfield, Alex Age 41", MatchStrength.Partial)]
+    public void A_trailing_age_is_not_part_of_the_name(string listing, MatchStrength expected)
+    {
+        Assert.Equal(expected, ListingComparison.Names(listing, OnFile));
+    }
+
+    /// <summary>
     /// The rule that decides most listings, and the one no recorded page exercised.
     /// </summary>
     [Theory]

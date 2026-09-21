@@ -53,12 +53,27 @@ public class BrokerReaderTests
     }
 
     [Fact]
-    public void No_real_company_ships_yet()
+    public void Every_real_company_is_confirmed_subject_to_at_least_one_regime()
     {
-        // Written to be deleted. The catalog has no companies in it, KNOWN-GAPS.md says
-        // so, and the day the first real one lands this fails and both get updated —
-        // which is the point: a company arriving should be noticed, not slipped in.
-        Assert.Empty(Read().Rows);
+        // The test that replaced "no real company ships yet" on the day the first one did.
+        // A company with no confirmed regime is allowed — it gets its courtesy target — but
+        // one arriving in the shared catalog without any is a company somebody added
+        // without reading the registry, and the registry is where every one of them starts.
+        var rows = Read().Rows;
+
+        Assert.NotEmpty(rows);
+        Assert.All(rows, row => Assert.NotEmpty(row.SubjectTo));
+    }
+
+    [Fact]
+    public void Every_real_company_cites_a_registry_for_its_confirmations()
+    {
+        // Evidence is validated as a link. This pins what kind of link the shipped catalog
+        // uses: a state's data-broker registry, which is a primary source, rather than a
+        // reading of the company's own privacy page, which is an inference.
+        Assert.All(
+            Read().Rows.SelectMany(row => row.SubjectTo),
+            confirmation => Assert.Contains("data_broker_registry", confirmation.EvidenceUrl, StringComparison.Ordinal));
     }
 
     [Fact]

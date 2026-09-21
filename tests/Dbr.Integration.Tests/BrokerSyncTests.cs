@@ -41,6 +41,21 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
 
     private string TestRegime => $"SYNC{_suffix.ToUpperInvariant()}";
 
+    /// <summary>
+    /// What the shipped catalog contributes to every run, so these tests can count their own
+    /// rows on top of it. One per company, and one confirmation per row of each regime a
+    /// company is subject to — the same number whether the run inserted or updated them.
+    /// </summary>
+    private static int ShippedCompanies => Shipped.Rows.Count;
+
+    private static int ShippedConfirmations =>
+        Shipped.Rows.Sum(row => row.SubjectTo.Sum(confirmation =>
+            CatalogReader.Read(typeof(BrokerRow).Assembly).Rows.Count(regime => regime.Code == confirmation.Regime)));
+
+    private static BrokerReadResult Shipped { get; } = BrokerReader.Read(
+        typeof(BrokerRow).Assembly,
+        CatalogReader.Read(typeof(BrokerRow).Assembly).Rows.Select(row => row.Code).ToHashSet(StringComparer.Ordinal));
+
     public async ValueTask DisposeAsync() =>
         await postgres.ExecuteAsOwnerAsync(
             $"""
@@ -53,7 +68,7 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
     {
         var result = await RunAsync([Company(_managed, ManagedDomain, minDelayMs: 2500)]);
 
-        Assert.Equal(1, result.BrokersApplied);
+        Assert.Equal(1 + ShippedCompanies, result.BrokersApplied);
         Assert.Equal("catalog", await ColumnAsync<string>("source"));
         Assert.Equal(2500, await ColumnAsync<int>("min_delay_ms"));
         Assert.True(await ColumnAsync<bool>("active"));
@@ -125,7 +140,7 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
 
         var result = await RunAsync([Company(_managed, ManagedDomain, minDelayMs: 100)]);
 
-        Assert.Equal(0, result.BrokersApplied);
+        Assert.Equal(ShippedCompanies, result.BrokersApplied);
         Assert.Equal(9000, await ColumnAsync<int>("min_delay_ms"));
         Assert.Equal("local", await ColumnAsync<string>("source"));
         Assert.Contains(result.LeftAlone, claimed => claimed.Contains(ManagedDomain, StringComparison.Ordinal));
@@ -142,7 +157,7 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
 
         var result = await RunAsync([Company(_managed, ManagedDomain)]);
 
-        Assert.Equal(0, result.BrokersApplied);
+        Assert.Equal(ShippedCompanies, result.BrokersApplied);
         Assert.Equal(0, await CountAsync(_managed));
         Assert.Equal(1, await CountAsync(_owned));
         Assert.Contains(result.LeftAlone, claimed => claimed.Contains(ManagedDomain, StringComparison.Ordinal));
@@ -212,7 +227,7 @@ public class BrokerSyncTests(PostgresFixture postgres) : IAsyncLifetime
         var rows = await postgres.QueryAsOwnerAsync<long>(
             "SELECT count(*) FROM public.legal_basis WHERE code = 'CCPA'");
 
-        Assert.Equal(rows, result.ConfirmationsApplied);
+        Assert.Equal(rows + ShippedConfirmations, result.ConfirmationsApplied);
         Assert.Equal(rows, await ConfirmationsAsync("CCPA"));
         Assert.Equal("catalog", await ConfirmationColumnAsync<string>("source"));
         Assert.Equal("https://registry.example/CCPA", await ConfirmationColumnAsync<string>("evidence_url"));

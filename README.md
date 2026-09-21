@@ -792,10 +792,11 @@ recording every company as unreachable.
 
 Three things worth knowing if you run this:
 
-- **Nothing knows how to search a broker yet.** Every leg resolves against an empty registry and
-  finishes as `no_search_available`, so runs complete having found nothing. This is the one piece
-  still missing, and it is a registration rather than a redesign — `KNOWN-GAPS.md` says what it
-  takes.
+- **One company can be searched, and most cannot be — yet.** A leg for a company with a search
+  recipe fetches its results page and reads it; Spokeo is that company. A leg for a company with no
+  recipe finishes `no_search_available`. And a recipe for most people-search sites would finish
+  `blocked`, because they answer an HTTP client with a Cloudflare challenge — `KNOWN-GAPS.md` says
+  what it takes to search those.
 - **A run is `completed` only if every company in scope was reached.** One company that rate-limited
   us makes the run `failed`, because "completed" is meant to answer "did we actually look
   everywhere". Which company and why is on the leg rows.
@@ -1603,11 +1604,18 @@ not been read by a lawyer. Demands under the other four jurisdictions in the cat
 and given correct deadlines, and **refuse to send rather than improvise wording**, which is the safe
 failure — but it does mean mail-based removals only work for California today.
 
-### The catalog has no real companies in it
+### The catalog has one real company in it
 
-One reference fixture, used to exercise the engines. A live instance would search nobody and demand
-nothing however good the code is. Filling it is research rather than programming, and it is the
-single largest thing standing between this and a usable product.
+Spokeo — a row, a mailbox, a search recipe and a CCPA confirmation citing the California registry —
+plus the reference fixture the engines are tested against. A live instance searches Spokeo and can
+send a demand to Spokeo, and nobody else. Filling the rest is research rather than programming, and
+it is the single largest thing standing between this and a usable product.
+
+Spokeo went first because it is the exception: of fourteen people-search sites probed, thirteen sit
+behind a Cloudflare challenge or a captcha and will not serve the recipe engine's HTTP client at all.
+A recipe against any of them finishes `blocked`, correctly, and finds nothing. Searching those
+companies needs a browser, and that is now the largest piece of engineering left — see
+`KNOWN-GAPS.md`.
 
 ### Grants are recorded but nobody is told
 

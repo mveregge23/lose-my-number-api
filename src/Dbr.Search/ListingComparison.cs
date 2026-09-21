@@ -80,12 +80,26 @@ public static class ListingComparison
     /// Only a single comma is treated this way. Two or more is an address, an "also known as"
     /// list, or a line that has had a city appended to it, and guessing at those would trade
     /// this false negative for a false positive.
+    ///
+    /// <b>And because what follows the comma is often an age.</b> "Jane Doe, Age 36" and
+    /// "Jane Doe, 36" are how results pages print a name at least as often as they print it
+    /// surname-first, and under the reading above the age becomes the surname — so the
+    /// person's own listing reads as somebody else's. When the part after the comma is
+    /// nothing but an age, the name is the part before it, and that is the only reading:
+    /// an age is not a name, so there is no surname-first reading to offer as well.
     /// </remarks>
     private static IEnumerable<string> Readings(string listing)
     {
-        yield return Normalise(listing);
-
         var parts = listing.Split(',');
+
+        if (parts.Length == 2 && IsAge(parts[1]))
+        {
+            yield return Normalise(parts[0]);
+
+            yield break;
+        }
+
+        yield return Normalise(listing);
 
         if (parts.Length == 2
             && !string.IsNullOrWhiteSpace(parts[0])
@@ -93,6 +107,19 @@ public static class ListingComparison
         {
             yield return Normalise($"{parts[1]} {parts[0]}");
         }
+    }
+
+    /// <summary>"Age 36", "age 36" or "36", and nothing else.</summary>
+    private static bool IsAge(string part)
+    {
+        var words = Normalise(part).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        return words.Length switch
+        {
+            1 => words[0].All(char.IsDigit) && words[0].Length <= 3,
+            2 => words[0] == "age" && words[1].All(char.IsDigit) && words[1].Length <= 3,
+            _ => false,
+        };
     }
 
     private static MatchStrength CompareName(string seen, string known)

@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 Max Veregge
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# How to ask Spokeo what it holds. Read from its results pages on 2026-09-15, and dry-run
+# against the snippets beside this file, which are those pages trimmed to the markup this
+# recipe reads with the people on them replaced by the test suite's one invented identity.
+#
+# Two things about this company are worth knowing before touching the selectors:
+#
+#   * Its class names are utility classes ("flex flex-row border-b-gray-300 …") and change
+#     with every redesign, so nothing here names one. The selectors use the ids, roles and
+#     element structure the page carries for its own reasons, which is what survives a
+#     restyling.
+#
+#   * "Nobody by that name" is answered with a 404. The engine reads a bare 404 as a search
+#     page that has moved; the noResults marker below is what stops every person the company
+#     does not list from being reported as a broken recipe.
+
+brokerId: edea346d-25ab-4eab-a9b7-d9b4c6132625
+description: >
+  Spokeo's name search, narrowed to a state and a city. Reads the name and the city of
+  residence off each result block; addresses proper are behind the paywall and are not read.
+
+# Name, state, city — the company redirects to its own spelling of the same path, and the
+# narrowest search that still finds the person is the one that fetches the fewest strangers.
+query: "/{{names.full}}/{{addresses.first.region}}/{{addresses.first.city}}"
+
+# The results list carries an id and a role of its own; each result is a list item within it.
+item: '#name-search-results-list [role="listitem"]'
+
+# The heading link, whose href is the listing's own page and whose text is the name with
+# the age appended — "Jane Doe, Age 36" — which the comparison knows to read as a name.
+link: "h3 a"
+
+# Spokeo stamps every page with its own classification in a meta tag. This is the value it
+# stamps a no-results page with, base64 for {"page_category":"name","page_subtype":"none",
+# "page_type":"noresult"}; a results page carries "serp" instead. Matched exactly, so it can
+# name nothing but the page it names.
+noResults: 'meta[name="spk-categorization"][content="eyJwYWdlX2NhdGVnb3J5IjoibmFtZSIsInBhZ2Vfc3VidHlwZSI6Im5vbmUiLCJwYWdlX3R5cGUiOiJub3Jlc3VsdCJ9"]'
+
+# No blocked selector: the company served every request made while writing this, and a
+# selector for a challenge page nobody has seen would be a guess dressed as a rule.
+
+fields:
+  # "Alex Whitfield, Age 41" — the age is stripped by the comparison, not by this recipe.
+  names: "h3 a"
+  # "Resides in Sacramento, CA": a city, which agrees partially with an address on file. The
+  # listing's street address is not on the results page, so a match here is name plus city,
+  # which clears the floor and is honestly no more than that.
+  addresses: "h3 + div"
