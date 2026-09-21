@@ -48,6 +48,7 @@ public static class IdentityReleaseServiceCollectionExtensions
         // mints as well — it is where a grant is spent, and where anything asking for one
         // on behalf of a request would ask — so there is no honest way for it to claim it
         // only minted.
+        services.AddScoped<ExposureSourceReader>();
         services.AddScoped<IIdentityReleaseService, IdentityReleaseService>();
         services.AddScoped<IIdentityReleaseRedeemer>(
             provider => provider.GetRequiredService<IIdentityReleaseService>());

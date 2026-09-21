@@ -135,6 +135,16 @@ public class SearchRecipeReaderTests
         Assert.Contains(problems, problem => problem.Contains("names.middle", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void A_search_that_cites_a_listing_is_refused()
+    {
+        // In the vocabulary, and meaningless here: a search is the thing that produces a
+        // listing. Refused at review rather than left to finish unsupported on every leg.
+        Read(Yaml(query: "/search?q={{names.full}}&ref={{listing.url}}"), out var problems);
+
+        Assert.Contains(problems, problem => problem.Contains("writes the listing", StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// A selector is checked by handing it to the parser that will run it.
     /// </summary>

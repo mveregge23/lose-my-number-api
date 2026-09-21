@@ -214,10 +214,10 @@ public sealed class RemovalJobWorkHandler(
             Demand(request, basis),
             Identity(released),
 
-            // The listing is in the vault under its own key, so citing it needs a release of
-            // its own that nothing mints yet. A demand that cites nothing is an ordinary
-            // demand, which is what makes this absence survivable rather than blocking.
-            SourceRef: null,
+            // The listing the demand cites, opened by the same grant that opened the
+            // identity — null for a demand made without having found anything, which is an
+            // ordinary demand and loses only the line that would have cited it.
+            SourceRef: released.Listing,
 
             // No checkpoint. Nothing persists one until the resume path exists, so an
             // attempt that follows a stop starts over rather than picking up.

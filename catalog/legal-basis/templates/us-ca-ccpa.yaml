@@ -52,7 +52,7 @@ requestTypes:
 
 citationUrl: https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1798.105
 
-reviewedAt: 2026-09-10
+reviewedAt: 2026-09-20
 reviewedBy: "@mveregge23"
 
 # Names nobody. It crosses every relay between here and the company in the clear and shows
@@ -81,6 +81,7 @@ body: |
   Name: {{names.full}}
   Address: {{addresses.first.line1}}, {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
   Email: {{contacts.email}}
+  Listing: {{listing.url}}
 
   The details above are provided so that you can locate the correct records, and for no other
   purpose. Please do not add them to any mailing list or retain them beyond what is needed to

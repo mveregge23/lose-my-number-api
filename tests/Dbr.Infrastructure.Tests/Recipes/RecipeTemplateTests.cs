@@ -187,4 +187,61 @@ public class RecipeTemplateTests
         Assert.Equal("Prince", Parse("{{names.last}}").RenderQuery(oneWord).Value);
         Assert.Null(Parse("{{names.first}}").RenderQuery(oneWord).Value);
     }
+
+    // ------------------------------------------------------------------ the listing
+
+    private const string Wording = "Name: {{names.full}}\nListing: {{listing.url}}\nThank you.";
+
+    [Fact]
+    public void The_listing_reads_the_demand_and_releases_nothing()
+    {
+        // It is not part of the identity, so it asks for no group — the release built from
+        // this template is exactly what it was before the line was added.
+        var template = Parse(Wording);
+
+        Assert.True(template.CitesListing);
+        Assert.Equal([IdentityField.Names], template.RequiredFields);
+    }
+
+    [Fact]
+    public void A_demand_with_a_listing_cites_it()
+    {
+        var rendered = Parse(Wording).RenderText(
+            new RenderSubject(Alex, new Uri("https://people.example/alex-whitfield/p1")));
+
+        Assert.Equal(
+            "Name: Alex Whitfield\nListing: https://people.example/alex-whitfield/p1\nThank you.",
+            rendered.Value);
+    }
+
+    [Fact]
+    public void A_demand_with_no_listing_loses_the_line_rather_than_the_demand()
+    {
+        // Neither refused — a listing is not a precondition of asking to be deleted — nor
+        // rendered with a hole, which would send a company "Listing: " and nothing after.
+        var rendered = Parse(Wording).RenderText(new RenderSubject(Alex, null));
+
+        Assert.Null(rendered.Missing);
+        Assert.Equal("Name: Alex Whitfield\nThank you.", rendered.Value);
+    }
+
+    [Fact]
+    public void An_identity_placeholder_is_still_required_even_beside_an_optional_one()
+    {
+        var noName = Alex with { Names = [] };
+
+        var rendered = Parse(Wording).RenderText(new RenderSubject(noName, null));
+
+        Assert.Equal("names.full", rendered.Missing);
+    }
+
+    [Fact]
+    public void A_query_cannot_cite_a_listing()
+    {
+        // A search has none — it is the thing that finds one. The reader refuses such a
+        // recipe; this is what the engine does if one reached it anyway.
+        var rendered = Parse("/search?ref={{listing.url}}").RenderQuery(Alex);
+
+        Assert.Equal("listing.url", rendered.Missing);
+    }
 }

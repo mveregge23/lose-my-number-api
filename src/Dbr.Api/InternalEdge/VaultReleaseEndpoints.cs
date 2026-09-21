@@ -68,33 +68,6 @@ public static class VaultReleaseEndpoints
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
-        return Results.Ok(Released(result.Release!));
+        return Results.Ok(ReleaseResponse.From(result.Release!));
     }
-
-    private static ReleaseResponse Released(RedeemedRelease release) =>
-        new(
-            release.ScanId,
-            release.RemovalJobId,
-            release.BrokerId,
-            [.. release.Fields.Select(IdentityVocabulary.ToWire)],
-            release.Identity.Names,
-            [.. release.Identity.Addresses.Select(Address)],
-            [.. release.Identity.Contacts.Select(Contact)],
-            release.Identity.DateOfBirth);
-
-    private static ReleasedAddress Address(ProfileAddress address) =>
-        new(
-            address.Id,
-            address.Line1,
-            address.Line2,
-            address.City,
-            address.Region,
-            address.PostalCode,
-            address.Country);
-
-    // Lower-cased, which is how the public API already spells a contact's kind. One
-    // spelling for one fact: a worker filling a broker's form and a client rendering a
-    // profile should not be reading two different vocabularies for the same field.
-    private static ReleasedContact Contact(ProfileContact contact) =>
-        new(contact.Id, contact.Kind.ToString().ToLowerInvariant(), contact.Value);
 }
