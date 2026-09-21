@@ -285,7 +285,7 @@ public sealed partial class RecipeTemplate
         // A query has no listing to cite and no lines to drop: a demand placeholder here is
         // a search recipe the reader should have refused, and it renders as missing rather
         // than as an empty parameter that searches for nobody in particular.
-        return Render(new RenderSubject(identity, null), Uri.EscapeDataString, dropLines: false);
+        return Render(new RenderSubject(identity, null), Uri.EscapeDataString);
     }
 
     /// <summary>
@@ -301,28 +301,37 @@ public sealed partial class RecipeTemplate
     /// method with a flag, so that neither can be reached by forgetting to pass one.
     /// </para>
     /// <para>
-    /// <b>A line citing a listing the demand does not have is dropped whole.</b> The
-    /// alternative readings are worse: refusing the demand would make a listing a
-    /// precondition of asking to be deleted, and rendering the line with a hole in it would
-    /// send a company "Listing: " and nothing after. The rule is the line rather than the
-    /// placeholder, because the words around a citation are about the citation.
+    /// <b>A line with nothing to say is dropped whole.</b> A demand discloses what was
+    /// released to it, and the release is narrowed to what the listing showed \u2014 so a
+    /// wording that writes an email for a listing that showed none has a line with a hole
+    /// in it, and so does one that cites a listing the demand does not have. Refusing the
+    /// demand would make every detail a precondition of asking to be deleted; sending
+    /// "Email: " and nothing after would be worse. The rule is the line rather than the
+    /// placeholder, because the words around a value are about the value \u2014 and a line keeps
+    /// the values it has when it has some, so a city with no postal code is still an
+    /// address line.
+    /// </para>
+    /// <para>
+    /// <b>A demand that names nobody is refused.</b> If no part of the identity reached the
+    /// prose at all there is no request to make, and that is reported as the first thing
+    /// the wording asked for and did not get.
     /// </para>
     /// </remarks>
     public RenderResult RenderText(RenderSubject subject)
     {
         ArgumentNullException.ThrowIfNull(subject);
 
-        return Render(subject, value => value, dropLines: true);
+        return RenderProse(subject);
     }
 
     /// <summary>Prose from an identity alone, for the templates and tests that cite nothing.</summary>
     public RenderResult RenderText(ProfileIdentityFields identity) =>
         RenderText(new RenderSubject(identity, null));
 
-    /// <summary>Marks where an absent listing would have gone, so its line can be found.</summary>
-    private const char Absent = '\uE000';
-
-    private RenderResult Render(RenderSubject subject, Func<string, string> escape, bool dropLines)
+    /// <summary>
+    /// A query, all or nothing: every placeholder must have a value, and each is escaped.
+    /// </summary>
+    private RenderResult Render(RenderSubject subject, Func<string, string> escape)
     {
         var built = new StringBuilder();
 
@@ -340,13 +349,6 @@ public sealed partial class RecipeTemplate
 
             if (string.IsNullOrWhiteSpace(value))
             {
-                if (placeholder.ReadsDemand && dropLines)
-                {
-                    built.Append(Absent);
-
-                    continue;
-                }
-
                 // Not an error and not an empty query. A search that needs a city and is
                 // given a profile with no address on file cannot do what this attempt asks
                 // of it, which is a specific answer the contract already has a name for.
@@ -356,15 +358,81 @@ public sealed partial class RecipeTemplate
             built.Append(escape(value));
         }
 
-        var rendered = built.ToString();
+        return RenderResult.Rendered(built.ToString());
+    }
 
-        if (rendered.Contains(Absent, StringComparison.Ordinal))
+    /// <summary>
+    /// Prose, line by line: a line whose placeholders all came up empty is left out, and
+    /// one that had some values keeps them.
+    /// </summary>
+    private RenderResult RenderProse(RenderSubject subject)
+    {
+        var lines = new List<string>();
+        var line = new StringBuilder();
+        var placeholdersOnLine = 0;
+        var valuesOnLine = 0;
+        var identityAsked = false;
+        var identityRendered = false;
+        string? firstMissing = null;
+
+        void EndLine()
         {
-            rendered = string.Join(
-                '\n',
-                rendered.Split('\n').Where(line => !line.Contains(Absent, StringComparison.Ordinal)));
+            if (placeholdersOnLine == 0 || valuesOnLine > 0)
+            {
+                lines.Add(line.ToString().TrimEnd());
+            }
+
+            line.Clear();
+            placeholdersOnLine = 0;
+            valuesOnLine = 0;
         }
 
-        return RenderResult.Rendered(rendered);
+        foreach (var part in _parts)
+        {
+            if (part is string literal)
+            {
+                var pieces = literal.Split('\n');
+
+                for (var i = 0; i < pieces.Length; i++)
+                {
+                    if (i > 0)
+                    {
+                        EndLine();
+                    }
+
+                    line.Append(pieces[i]);
+                }
+
+                continue;
+            }
+
+            var placeholder = (RecipePlaceholder)part;
+            var value = placeholder.Read(subject);
+
+            placeholdersOnLine++;
+            identityAsked |= !placeholder.ReadsDemand;
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                firstMissing ??= placeholder.Path;
+
+                continue;
+            }
+
+            valuesOnLine++;
+            identityRendered |= !placeholder.ReadsDemand;
+            line.Append(value);
+        }
+
+        EndLine();
+
+        // A wording that asked for the person and got no part of them names nobody. A
+        // wording that never asked — a subject line — is prose and stands as written.
+        if (identityAsked && !identityRendered)
+        {
+            return RenderResult.NothingFor(firstMissing!);
+        }
+
+        return RenderResult.Rendered(string.Join('\n', lines));
     }
 }

@@ -79,7 +79,8 @@ body: |
   including information you obtained from third parties.
 
   Name: {{names.full}}
-  Address: {{addresses.first.line1}}, {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
+  Street: {{addresses.first.line1}}
+  City: {{addresses.first.city}}, {{addresses.first.region}} {{addresses.first.postalCode}}
   Email: {{contacts.email}}
   Listing: {{listing.url}}
 

@@ -3,6 +3,7 @@
 
 using Dbr.Domain.Catalog;
 using Dbr.Domain.Monitoring;
+using Dbr.Domain.Profiles;
 
 namespace Dbr.Api.Endpoints;
 
@@ -122,6 +123,13 @@ public static class ExposureEndpoints
             // A ranking aid rather than a claim. The tenant is the only one who can say
             // whether a listing is actually them, which is what the dismiss route is.
             confidence = listing.Exposure.Confidence,
+
+            // What the page agreed with, by group — "name partially, city" — which is what
+            // lets a person judge the score, and is all a demand citing this finding will
+            // disclose. Never the values: this says a name agreed, not which name.
+            agreed = listing.Exposure.Agreement.ToDictionary(
+                entry => IdentityVocabulary.ToWire(entry.Key),
+                entry => IdentityVocabulary.ToWire(entry.Value)),
 
             discoveredAt = listing.Exposure.DiscoveredAt,
 
