@@ -46,6 +46,22 @@ public static class EmailConnectorServiceCollectionExtensions
                 + string.Join(Environment.NewLine, read.Problems.Select(problem => "  " + problem)));
         }
 
+        // The dispatcher registers an empty registry as its fallback, so that a build with
+        // no connectors leaves demands queued rather than failing to resolve. A fallback is
+        // what this replaces: registered before or after, it must never shadow the real
+        // thing. The worker once ran with the fallback because this call came later in its
+        // composition and TryAdd lost — every demand stayed queued and nothing was wrong
+        // except the order of two lines.
+        var fallback = services
+            .Where(descriptor => descriptor.ServiceType == typeof(IBrokerConnectorRegistry)
+                && descriptor.ImplementationInstance is EmptyBrokerConnectorRegistry)
+            .ToList();
+
+        foreach (var descriptor in fallback)
+        {
+            services.Remove(descriptor);
+        }
+
         // One engine per company, shared across every tenant's demands — it holds a recipe,
         // the wording and a relay, and nothing about a person. TryAdd, so a build that has
         // registered connectors of its own keeps them, which is how a test puts one in.
