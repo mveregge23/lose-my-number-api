@@ -303,6 +303,52 @@ public class RemovalDispatchTests(PostgresFixture postgres, OpenBaoFixture openB
         Assert.Contains("TICKET-9", await DetailAsync(work.RemovalJobId), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A demand that went out by mail records the id it went out under.
+    /// </summary>
+    /// <remarks>
+    /// The whole point of the column, asserted against the row rather than against the
+    /// answer: the id has to survive the mapping, the save and the check constraint on the
+    /// way through, and the constraint is the half that only a real database has an opinion
+    /// about. Read back exactly as the connector gave it, because an id the storage path
+    /// decorated is one no reply would ever match.
+    /// </remarks>
+    [Fact]
+    public async Task An_attempt_that_sent_a_demand_records_the_id_it_sent_it_under()
+    {
+        var (account, _, work) = await DispatchedAsync(
+            StubBrokerConnector.Answering(new ConnectorResult.AwaitingBrokerResponse(
+                DateTimeOffset.UtcNow.AddDays(30),
+                Checkpoint: null)
+            {
+                SentMessageId = "a41c9e7b@relay.example.test",
+            }));
+
+        await HandleAsync(account, work);
+
+        Assert.Equal("succeeded", await JobStatusAsync(work.RemovalJobId));
+        Assert.Equal("a41c9e7b@relay.example.test", await SentMessageIdAsync(work.RemovalJobId));
+    }
+
+    /// <summary>
+    /// An attempt that sent no message leaves the column empty rather than inventing one.
+    /// </summary>
+    /// <remarks>
+    /// Only a connector that hands a message to a relay has an id, so the null has to be the
+    /// ordinary case — anything that filled this in for a web form would make the column
+    /// unreadable as a record of what was actually sent.
+    /// </remarks>
+    [Fact]
+    public async Task An_attempt_that_sent_no_message_records_none()
+    {
+        var (account, _, work) = await DispatchedAsync(
+            StubBrokerConnector.Answering(new ConnectorResult.Success("TICKET-9", null)));
+
+        await HandleAsync(account, work);
+
+        Assert.Null(await SentMessageIdAsync(work.RemovalJobId));
+    }
+
     [Fact]
     public async Task Nothing_left_to_remove_ends_the_demand()
     {
@@ -770,6 +816,10 @@ public class RemovalDispatchTests(PostgresFixture postgres, OpenBaoFixture openB
     private async Task<string?> DetailAsync(Guid jobId) =>
         await postgres.QueryAsOwnerAsync<string>(
             $"SELECT detail FROM public.removal_job WHERE id = '{jobId}'");
+
+    private async Task<string?> SentMessageIdAsync(Guid jobId) =>
+        await postgres.QueryAsOwnerAsync<string>(
+            $"SELECT sent_message_id FROM public.removal_job WHERE id = '{jobId}'");
 
     private async Task<DateTime?> NextRetryAsync(Guid jobId) =>
         await postgres.QueryAsOwnerAsync<DateTime?>(

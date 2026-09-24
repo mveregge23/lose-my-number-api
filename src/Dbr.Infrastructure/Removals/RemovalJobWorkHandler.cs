@@ -299,6 +299,12 @@ public sealed class RemovalJobWorkHandler(
         job.FailureReason = progress.FailureReason;
         job.Detail = Trim(progress.Detail);
 
+        // Written whatever the attempt ended as, because a message that was handed over has
+        // been handed over: a relay that took the demand and a connector that then reported
+        // something else still leave a company holding a message, and the row that cannot
+        // name it is the row somebody is reading on the day that company denies it.
+        job.SentMessageId = progress.SentMessageId;
+
         var retryable = progress.RetryWorthwhile && request.Attempt < _options.MaxAttempts;
 
         if (retryable)

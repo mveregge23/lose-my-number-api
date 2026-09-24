@@ -33,7 +33,20 @@ public sealed record RemovalProgress(
     RemovalRequestStatus RequestStatus,
     ConnectorFailureReason? FailureReason,
     bool RetryWorthwhile,
-    string Detail);
+    string Detail)
+{
+    /// <summary>
+    /// The id the message this attempt sent went out under, or <see langword="null"/> when
+    /// it sent none.
+    /// </summary>
+    /// <remarks>
+    /// Outside the positional list because it is orthogonal to everything in it. The other
+    /// five fields are the mapping's own judgement about where an answer leaves the demand;
+    /// this one is carried through untouched, and having it beside them rather than among
+    /// them keeps a connector from looking like it gets a say in the first set.
+    /// </remarks>
+    public string? SentMessageId { get; init; }
+}
 
 /// <summary>
 /// Turns what a connector answered into where the demand now stands.
@@ -60,7 +73,17 @@ public static class RemovalOutcomes
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        return result switch
+        // The id a message went out under is carried past the mapping rather than through
+        // it, because it is true of every branch and decides none of them. A connector that
+        // sent a demand and a connector that sent one and then failed have both left a
+        // message behind, and the record of what was sent should not depend on how the
+        // attempt subsequently ended.
+        return Outcome(result) with { SentMessageId = result.SentMessageId };
+    }
+
+    /// <summary>The mapping itself: which answer puts the demand where.</summary>
+    private static RemovalProgress Outcome(ConnectorResult result) =>
+        result switch
         {
             // The demand is in and the clock is running. Not Removed: a company that
             // accepted a request has not yet honoured it, and only a verification scan can
@@ -120,5 +143,4 @@ public static class RemovalOutcomes
                 + "cannot be moved by is one that would leave a request sitting in the state "
                 + "it was dispatched in, with nothing recording why."),
         };
-    }
 }

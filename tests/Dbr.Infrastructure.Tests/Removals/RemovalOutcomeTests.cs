@@ -147,6 +147,35 @@ public class RemovalOutcomeTests
     }
 
     /// <summary>
+    /// The id a message went out under survives the mapping whichever way the demand moved.
+    /// </summary>
+    /// <remarks>
+    /// The mapping's job is to decide where an answer leaves the demand, and a message that
+    /// was handed to a relay was handed to it whatever that decision turns out to be. A
+    /// connector that sent a demand and then failed has still left a company holding one, so
+    /// dropping the id on the failure branch would lose it in the case somebody is most
+    /// likely to be reading the row.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(EveryAnswer))]
+    public void The_id_a_message_went_out_under_survives_every_branch(ConnectorResult result)
+    {
+        var progress = RemovalOutcomes.For(result with { SentMessageId = "d3f8a1@relay.test" });
+
+        Assert.Equal("d3f8a1@relay.test", progress.SentMessageId);
+    }
+
+    [Fact]
+    public void An_attempt_that_sent_nothing_records_no_message()
+    {
+        // Most attempts. A form is submitted and answers on the page, so there is no id —
+        // and nothing may read the absence of one as an attempt that never ran.
+        var progress = RemovalOutcomes.For(new ConnectorResult.Success("TICKET-1", null));
+
+        Assert.Null(progress.SentMessageId);
+    }
+
+    /// <summary>
     /// Every answer a connector can give moves the demand somewhere the lifecycle allows.
     /// </summary>
     /// <remarks>

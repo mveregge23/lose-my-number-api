@@ -324,6 +324,13 @@ public static class RemovalEndpoints
             // Null when there is not going to be another attempt, which is the difference
             // between a demand that has stopped and one that is waiting.
             nextRetryAt = job.NextRetryAt,
+
+            // The id the demand went out under, where a demand went out by mail — null for
+            // every other attempt, which is most of them. Served here because this route is
+            // the record of what was done on somebody's behalf, and this is the part of that
+            // record a company can be asked to check against its own logs. Without the angle
+            // brackets a header wears, which is the form it is stored and matched in.
+            sentMessageId = job.SentMessageId,
         };
 
     /// <summary>
