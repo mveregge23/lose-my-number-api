@@ -186,6 +186,13 @@ public static class RemovalEndpoints
             // not a history of the states passed through. Serving it under the more
             // ambitious name would be the kind of gap somebody only finds by trusting it.
             attempts = timeline.Attempts.Select(Attempt),
+
+            // What companies have said back, which until now the record could not show at
+            // all: a demand being worked on, one closed because nobody answered a question,
+            // and one that never arrived all read as the same waiting request. Metadata
+            // only — who answered, when, and to which attempt — because what a company
+            // wrote is prose of its own composition and is not kept.
+            replies = timeline.Replies.Select(Reply),
         });
     }
 
@@ -331,6 +338,34 @@ public static class RemovalEndpoints
             // record a company can be asked to check against its own logs. Without the angle
             // brackets a header wears, which is the form it is stored and matched in.
             sentMessageId = job.SentMessageId,
+        };
+
+    /// <summary>
+    /// One answer from a company, as much of it as is kept.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No body, because none is stored: what a company writes back quotes the request it
+    /// answers, so the prose is as likely to carry somebody's identity as the demand was,
+    /// and deciding where that may live belongs to whatever has to read it.
+    /// </para>
+    /// <para>
+    /// <c>matchedBy</c> is served rather than kept internal because it is the one place a
+    /// rewritten sender becomes visible. An instance whose replies all resolve by thread
+    /// headers is one whose per-attempt return addresses are not surviving the relay it
+    /// sends through — which nothing on the sending side can observe, and which changes
+    /// what that deployment can rely on.
+    /// </para>
+    /// </remarks>
+    private static object Reply(BrokerReply reply) =>
+        new
+        {
+            id = reply.Id,
+            attemptId = reply.RemovalJobId,
+            from = reply.FromAddress,
+            subject = reply.Subject,
+            matchedBy = RemovalVocabulary.ToWire(reply.MatchedBy),
+            receivedAt = reply.ReceivedAt,
         };
 
     /// <summary>

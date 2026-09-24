@@ -125,6 +125,16 @@ public static class WorkerComposition
         // quietly asks fewer companies than its catalog claims is worse than both.
         builder.Services.AddDbrEmailConnectors();
 
+        // And how an answer gets back in. Sending was only ever half of a conversation: until
+        // now a company working through its queue, a company that closed the request because
+        // nobody answered its question, and a message that bounced were the same record here,
+        // with the deadline running on each.
+        //
+        // Off unless a deployment turns it on, which is the opposite of the dispatchers and
+        // deliberately so: a scan nobody starts is work left undone, while a mailbox nobody
+        // meant to hand over the password to is a mailbox being read.
+        var readsReplies = builder.Services.AddDbrInboundMail(builder.Configuration);
+
         builder.Services.AddHostedService<Worker>();
 
         // On unless a deployment turns it off. A scan somebody asked for and that nothing ever
@@ -148,6 +158,11 @@ public static class WorkerComposition
         if (removalDispatch.Enabled)
         {
             builder.Services.AddHostedService<RemovalDispatchService>();
+        }
+
+        if (readsReplies)
+        {
+            builder.Services.AddHostedService<MailIngestService>();
         }
 
         var schedule = new ScanScheduleOptions();

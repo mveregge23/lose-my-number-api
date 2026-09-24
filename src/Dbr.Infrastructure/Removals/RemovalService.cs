@@ -268,7 +268,16 @@ public sealed class RemovalService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return new RemovalTimeline(listing.Request, listing.Broker, attempts);
+        // In the order the company sent them, for the same reason the attempts read
+        // forwards: this answers what has happened to the demand, not what happened lately.
+        var replies = await core.Set<BrokerReply>()
+            .AsNoTracking()
+            .Where(reply => reply.RemovalRequestId == requestId)
+            .OrderBy(reply => reply.ReceivedAt)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return new RemovalTimeline(listing.Request, listing.Broker, attempts, replies);
     }
 
     public Task<MoveRemovalResult> CancelAsync(Guid requestId, CancellationToken cancellationToken) =>
