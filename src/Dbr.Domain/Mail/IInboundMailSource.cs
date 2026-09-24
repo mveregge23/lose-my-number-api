@@ -8,11 +8,11 @@ namespace Dbr.Domain.Mail;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Headers and no body.</b> Everything here is what decides which attempt a message
-/// answers; what a company actually wrote is not read yet, and a source that never
-/// downloads it cannot leak it. Reading the prose is what tells a confirmation from a
-/// refusal, and it arrives with the classification that needs it — together with the
-/// decision about where, if anywhere, it is kept.
+/// <b>Headers, and the body only when it turns out to matter.</b> Everything here decides
+/// which attempt a message answers, which is a question most arriving mail fails — a
+/// mailbox that demands go out from receives everything anybody sends it. The prose is
+/// fetched separately, and only once a message has resolved to an attempt, so what answers
+/// nothing is never downloaded at all.
 /// </para>
 /// <para>
 /// <b>Message ids are bare.</b> A header writes one inside angle brackets and the id is
@@ -107,6 +107,17 @@ public interface IInboundMailSource
 {
     /// <summary>Whatever has arrived and not yet been acknowledged, oldest first.</summary>
     Task<IReadOnlyList<InboundMessage>> FetchAsync(int limit, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// What the company actually wrote, for as long as it takes to read it.
+    /// </summary>
+    /// <remarks>
+    /// Separate from fetching because it is only asked for once a message has resolved to
+    /// an attempt, and because what comes back is the most sensitive thing this port
+    /// handles: a company's answer quotes the request it answers. It is matched against the
+    /// phrases that company's file declares and then dropped — nothing stores it.
+    /// </remarks>
+    Task<string?> ReadBodyAsync(InboundMessage message, CancellationToken cancellationToken);
 
     /// <summary>Says this message has been dealt with and need not be offered again.</summary>
     Task AcknowledgeAsync(InboundMessage message, CancellationToken cancellationToken);

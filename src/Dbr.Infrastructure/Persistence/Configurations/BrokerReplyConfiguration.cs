@@ -22,11 +22,23 @@ internal sealed class BrokerReplyConfiguration : IEntityTypeConfiguration<Broker
                 match => RemovalVocabulary.ToWire(match),
                 stored => MatchFromStorage(stored));
 
+        builder.Property(reply => reply.Reading)
+            .HasConversion(
+                reading => RemovalVocabulary.ToWire(reading),
+                stored => ReadingFromStorage(stored));
+
         // Declared because EF can express it exactly — a plain unique constraint with no
         // predicate — which means a message filed twice fails in a test that never reaches
         // Postgres, and fails the same way there.
         builder.HasIndex(reply => new { reply.TenantId, reply.SourceRef }).IsUnique();
     }
+
+    private static ReplyReading ReadingFromStorage(string stored) =>
+        RemovalVocabulary.ParseReplyReading(stored)
+        ?? throw new InvalidOperationException(
+            $"broker_reply.reading holds '{stored}', which this build has no value for. "
+            + "Either a migration widened the check constraint ahead of the code, or a row "
+            + "was written by hand.");
 
     private static ReplyMatch MatchFromStorage(string stored) =>
         RemovalVocabulary.ParseReplyMatch(stored)

@@ -7,6 +7,7 @@ using Dbr.Infrastructure.Mail;
 using Dbr.Infrastructure.Removals;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Dbr.Infrastructure.DependencyInjection;
@@ -82,6 +83,12 @@ public static class InboundMailServiceCollectionExtensions
         services.AddSingleton<IInboundMailSource, ImapMailSource>();
         services.AddSingleton<IAnsweredDemandDirectory>(
             new AnsweredDemandDirectory(connectionString));
+
+        // A build that has not been told how any company talks still reads its replies; they
+        // all come out unclear, which means a person looks at them. TryAdd and a named type,
+        // so a build carrying the catalog's own phrases keeps them and a container dump says
+        // which of the two a deployment ended up with.
+        services.TryAddSingleton<IBrokerReplyPhrases>(new NoDeclaredReplyPhrases());
 
         services.AddScoped<IReplyFiler, ReplyFiler>();
 

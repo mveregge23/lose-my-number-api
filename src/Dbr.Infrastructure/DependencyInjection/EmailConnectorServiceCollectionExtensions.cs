@@ -74,6 +74,24 @@ public static class EmailConnectorServiceCollectionExtensions
                     provider.GetRequiredService<IMailSender>(),
                     provider.GetRequiredService<IJobMailboxes>())));
 
+        // How these same companies' answers are recognised, from the same documents. The
+        // fallback it replaces says nothing about anybody, and the rule is the one above:
+        // a fallback must never shadow the real thing whichever order they are registered
+        // in. Shadowing here would be quieter than shadowing a connector — every reply would
+        // simply read as unclear, which is also what a correct build does for a company
+        // nobody has written phrases for.
+        var unread = services
+            .Where(descriptor => descriptor.ServiceType == typeof(IBrokerReplyPhrases)
+                && descriptor.ImplementationInstance is NoDeclaredReplyPhrases)
+            .ToList();
+
+        foreach (var descriptor in unread)
+        {
+            services.Remove(descriptor);
+        }
+
+        services.TryAddSingleton<IBrokerReplyPhrases>(new CatalogReplyPhrases(read.Recipes));
+
         return services;
     }
 }

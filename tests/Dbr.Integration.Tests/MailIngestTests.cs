@@ -55,7 +55,11 @@ public class MailIngestTests(PostgresFixture postgres, OpenBaoFixture openBao) :
 
     private Guid _brokerId;
 
+    private Guid _undescribedBrokerId;
+
     private string BrokerDomain => $"ing-broker-{_suffix}.test";
+
+    private string UndescribedDomain => $"ing-quiet-{_suffix}.test";
 
     public async ValueTask InitializeAsync()
     {
@@ -66,11 +70,15 @@ public class MailIngestTests(PostgresFixture postgres, OpenBaoFixture openBao) :
         await postgres.ExecuteAsOwnerAsync(
             $"""
              INSERT INTO public.broker (name, domain, removal_method, sla_days, active)
-                 VALUES ('ING Broker {_suffix}', '{BrokerDomain}', 'email', 30, true);
+                 VALUES ('ING Broker {_suffix}', '{BrokerDomain}', 'email', 30, true),
+                        ('ING Quiet {_suffix}', '{UndescribedDomain}', 'email', 30, true);
              """);
 
         _brokerId = await postgres.QueryAsOwnerAsync<Guid>(
             $"SELECT id FROM public.broker WHERE domain = '{BrokerDomain}'");
+
+        _undescribedBrokerId = await postgres.QueryAsOwnerAsync<Guid>(
+            $"SELECT id FROM public.broker WHERE domain = '{UndescribedDomain}'");
 
         _worker = BuildWorker();
     }
@@ -217,6 +225,129 @@ public class MailIngestTests(PostgresFixture postgres, OpenBaoFixture openBao) :
         Assert.Null(match);
     }
 
+    /// <summary>
+    /// A reply is read against the phrases the company's file declares, and the verdict is
+    /// what is kept.
+    /// </summary>
+    /// <remarks>
+    /// The prose passes through the process and lands nowhere: what the row holds is the
+    /// reading and the catalog phrase that produced it. The body used here is the shape of
+    /// the answer the first real demand received — a company asking to be told who is
+    /// asking before it will act.
+    /// </remarks>
+    [Fact]
+    public async Task What_a_company_wrote_is_read_and_not_kept()
+    {
+        var account = await OpenAccountAsync();
+        var (requestId, jobId) = await SentDemandAsync(account, "demand-5@relay.test");
+
+        _arriving.Add(
+            Message("1-5", inReplyTo: "demand-5@relay.test"),
+            "If we do not receive a reply, we will consider your request resolved.");
+
+        Assert.Equal(1, await SweepAsync());
+
+        var (reading, phrase) = await ReadingAsync(jobId);
+        Assert.Equal("needs_us", reading);
+        Assert.Equal("we will consider your request resolved", phrase);
+
+        // The body reached the phrases and nothing else: no column holds it, and the row
+        // says what it was read as rather than what it said.
+        var stored = await postgres.QueryAsOwnerAsync<long>(
+            "SELECT count(*) FROM information_schema.columns "
+            + "WHERE table_name = 'broker_reply' AND column_name IN ('body', 'excerpt')");
+
+        Assert.Equal(0, stored);
+
+        var reply = Assert.Single(await TimelineAsync(account, requestId));
+        Assert.Equal("needs_us", reply.GetProperty("reading").GetString());
+        Assert.Equal(
+            "we will consider your request resolved",
+            reply.GetProperty("matchedPhrase").GetString());
+    }
+
+    /// <summary>
+    /// A company nobody has written phrases for has its answers read by a person.
+    /// </summary>
+    /// <remarks>
+    /// The state of almost every company, and the reason this is safe to ship before the
+    /// catalog has caught up: unclear is a reading that asks for somebody to look rather
+    /// than one that acts.
+    /// </remarks>
+    [Fact]
+    public async Task An_answer_from_a_company_nobody_has_described_is_left_for_a_person()
+    {
+        var account = await OpenAccountAsync();
+        var (_, jobId) = await SentDemandAsync(account, "demand-6@relay.test", _undescribedBrokerId);
+
+        _arriving.Add(
+            Message("1-6", inReplyTo: "demand-6@relay.test"),
+            "We have received your message and will respond in due course.");
+
+        Assert.Equal(1, await SweepAsync());
+
+        var (reading, phrase) = await ReadingAsync(jobId);
+        Assert.Equal("unclear", reading);
+        Assert.Null(phrase);
+    }
+
+    /// <summary>
+    /// Mail that answers nothing never has its prose fetched at all.
+    /// </summary>
+    /// <remarks>
+    /// Most of what arrives in a mailbox this instance sends from is not an answer, and the
+    /// cheapest way not to mishandle prose is not to read it. The body is asked for only
+    /// once a message has resolved to an attempt.
+    /// </remarks>
+    [Fact]
+    public async Task The_prose_of_mail_that_answers_nothing_is_never_read()
+    {
+        await OpenAccountAsync();
+
+        _arriving.Add(Message("1-7", inReplyTo: "nobodys@relay.test"), "Anything at all.");
+
+        Assert.Equal(0, await SweepAsync());
+        Assert.Empty(_arriving.BodiesRead);
+    }
+
+    /// <summary>
+    /// A reading and the phrase that produced it stand or fall together.
+    /// </summary>
+    /// <remarks>
+    /// The two halves are one statement — "this was read as X, because of Y" — and either
+    /// half alone is a row nobody can act on: a verdict with nothing behind it cannot be
+    /// checked, and a phrase behind a verdict of unclear says something matched and was
+    /// then ignored. The table refuses both rather than trusting every future writer to
+    /// keep them in step.
+    /// </remarks>
+    [Theory]
+    [InlineData("confirmed", "NULL")]
+    [InlineData("unclear", "'we will consider your request resolved'")]
+    public async Task A_reading_and_the_phrase_behind_it_cannot_disagree(string reading, string phrase)
+    {
+        var account = await OpenAccountAsync();
+        var (requestId, jobId) = await SentDemandAsync(account, "demand-8@relay.test");
+
+        var refused = await Assert.ThrowsAnyAsync<Exception>(() =>
+            postgres.ExecuteAsOwnerAsync(
+                $"""
+                 INSERT INTO public.broker_reply
+                     (tenant_id, removal_request_id, removal_job_id, source_ref, from_address,
+                      matched_by, reading, matched_phrase, received_at)
+                     VALUES ('{account.TenantId}', '{requestId}', '{jobId}', 'hand-written',
+                             'privacy@company.test', 'thread_headers', '{reading}', {phrase},
+                             now());
+                 """));
+
+        Assert.Contains("broker_reply_unclear_matched_nothing", refused.Message, StringComparison.Ordinal);
+    }
+
+    private async Task<(string? Reading, string? Phrase)> ReadingAsync(Guid jobId) =>
+        (await postgres.QueryAsOwnerAsync<string>(
+            $"SELECT reading FROM public.broker_reply WHERE removal_job_id = '{jobId}'"),
+         await postgres.QueryAsOwnerAsync<string>(
+            $"SELECT matched_phrase FROM public.broker_reply WHERE removal_job_id = '{jobId}'"));
+
     private async Task<int> SweepAsync() =>
         await _worker.GetRequiredService<MailIngestService>()
             .SweepAsync(TestContext.Current.CancellationToken);
@@ -246,11 +377,12 @@ public class MailIngestTests(PostgresFixture postgres, OpenBaoFixture openBao) :
     /// </remarks>
     private async Task<(Guid RequestId, Guid JobId)> SentDemandAsync(
         Account account,
-        string? sentMessageId)
+        string? sentMessageId,
+        Guid? broker = null)
     {
         var (status, body) = await _api.PostAsync(
             RemovalsPath,
-            new { brokerId = _brokerId, requestType = "delete" },
+            new { brokerId = broker ?? _brokerId, requestType = "delete" },
             account.Token);
 
         Assert.Equal(HttpStatusCode.Accepted, status);
@@ -326,6 +458,10 @@ public class MailIngestTests(PostgresFixture postgres, OpenBaoFixture openBao) :
         services.AddSingleton<IAnsweredDemandDirectory>(
             new AnsweredDemandDirectory(postgres.ConnectionString));
         services.AddSingleton(new InboundMailOptions { Enabled = true });
+
+        // One company whose answers somebody has read, and one nobody has. Which is the
+        // ordinary state of the catalog, and the difference this container exists to show.
+        services.AddSingleton<IBrokerReplyPhrases>(new DeclaredPhrases(_brokerId));
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IReplyFiler, ReplyFiler>();
         services.AddSingleton<MailIngestService>();
@@ -334,6 +470,29 @@ public class MailIngestTests(PostgresFixture postgres, OpenBaoFixture openBao) :
     }
 
     private sealed record Account(string Token, Guid TenantId);
+
+    /// <summary>
+    /// One company whose answers have been read, and every other company's not.
+    /// </summary>
+    /// <remarks>
+    /// The phrases are the ones the shipped catalog declares for the company this project
+    /// has actually corresponded with, so what these tests assert is the behaviour a real
+    /// deployment gets rather than a shape invented for a test.
+    /// </remarks>
+    private sealed class DeclaredPhrases(Guid described) : IBrokerReplyPhrases
+    {
+        public ReplyPhrases For(Guid brokerId) =>
+            brokerId == described
+                ? new ReplyPhrases(
+                    Confirmed: [],
+                    Refused: [],
+                    NeedsUs:
+                    [
+                        "respond with confirmation that you are the person listed",
+                        "we will consider your request resolved",
+                    ])
+                : ReplyPhrases.None;
+    }
 
     /// <summary>
     /// A mailbox with whatever a test put in it.
@@ -349,10 +508,18 @@ public class MailIngestTests(PostgresFixture postgres, OpenBaoFixture openBao) :
 
         private readonly List<InboundMessage> _acknowledged = [];
 
+        private readonly Dictionary<string, string?> _bodies = [];
+
+        private readonly List<string> _read = [];
+
         public IReadOnlyList<InboundMessage> Pending =>
             _messages.Except(_acknowledged).ToList();
 
-        public void Add(InboundMessage message) => _messages.Add(message);
+        public void Add(InboundMessage message, string? body = null)
+        {
+            _messages.Add(message);
+            _bodies[message.SourceRef] = body;
+        }
 
         public void Unacknowledge() => _acknowledged.Clear();
 
@@ -360,6 +527,17 @@ public class MailIngestTests(PostgresFixture postgres, OpenBaoFixture openBao) :
             int limit,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<InboundMessage>>(Pending.Take(limit).ToList());
+
+        public IReadOnlyList<string> BodiesRead => _read;
+
+        public Task<string?> ReadBodyAsync(
+            InboundMessage message,
+            CancellationToken cancellationToken)
+        {
+            _read.Add(message.SourceRef);
+
+            return Task.FromResult(_bodies.GetValueOrDefault(message.SourceRef));
+        }
 
         public Task AcknowledgeAsync(InboundMessage message, CancellationToken cancellationToken)
         {

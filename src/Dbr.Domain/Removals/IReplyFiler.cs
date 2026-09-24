@@ -27,6 +27,11 @@ public interface IReplyFiler
 {
     /// <summary>Files one reply against one attempt.</summary>
     /// <remarks>
+    /// The prose is passed in and not stored. Reading it is what turns an answer into a
+    /// verdict, and it happens here because the phrases it is read against belong to the
+    /// company the demand was sent to — which is a fact this side of the boundary can look
+    /// up and the process reading the mailbox cannot.
+    ///
     /// Tolerating a message seen twice is part of the contract rather than a caller's
     /// problem: a source offers a reply until it is acknowledged, so a process that files
     /// one and stops before acknowledging will be offered it again, and filing it twice
@@ -35,5 +40,6 @@ public interface IReplyFiler
     Task<ReplyFiling> FileAsync(
         InboundMessage message,
         AnsweredDemandMatch match,
+        string? body,
         CancellationToken cancellationToken);
 }

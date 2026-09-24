@@ -281,7 +281,7 @@ public class TemplatedEmailConnectorTests
 
     private static TemplatedEmailConnector Build(IMailSender sender) =>
         new(
-            new EmailRecipe(BrokerId, "privacy"),
+            new EmailRecipe(BrokerId, "privacy", ReplyPhrases.None),
             [Template()],
             sender,
             new FixedMailboxes());

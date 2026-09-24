@@ -14,3 +14,22 @@ description: >
   removal form.
 
 mailbox: privacy
+
+# How Spokeo's answers are recognised, read from the two it sent on 2026-09-21 in reply to
+# the first demand this project made for real.
+#
+# Both were automated and neither answered the message it was replying to: one is the
+# boilerplate the privacy mailbox sends to everything, the other a ticket receipt. What
+# makes them worth declaring is the sentence about a request nobody replies to being
+# considered resolved — a company that closes a request on the requester's silence is one
+# whose demands must not sit here reading as "waiting" while that clock runs.
+#
+# Nothing is declared under `confirmed`. No answer this project has seen from Spokeo says a
+# listing has been removed, and inventing the sentence a company might use to say so is
+# exactly the guess that would mark a demand honoured that nobody acted on. It gets filled
+# in when a real confirmation arrives and can be read.
+replies:
+  needsUs:
+    - "respond with confirmation that you are the person listed"
+    - "we will consider your request resolved"
+    - "please provide them in your response"

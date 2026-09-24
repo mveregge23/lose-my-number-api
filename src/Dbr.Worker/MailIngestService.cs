@@ -106,17 +106,27 @@ public sealed class MailIngestService(
                 {
                     unresolved++;
                 }
-                else if (await FileAsync(message, match, cancellationToken).ConfigureAwait(false)
-                    is ReplyFiling.Filed)
+                else
                 {
-                    filed++;
+                    // The prose, and only now: most of what a mailbox receives answers
+                    // nothing, and this is the point at which a message has turned out to
+                    // be an answer. It is read against the company's declared phrases and
+                    // not kept.
+                    var body = await source.ReadBodyAsync(message, cancellationToken)
+                        .ConfigureAwait(false);
 
-                    logger.LogInformation(
-                        "A reply to attempt {JobId} on request {RequestId} was filed, "
-                        + "resolved by {MatchedBy}.",
-                        match.Demand.JobId,
-                        match.Demand.RemovalRequestId,
-                        match.MatchedBy);
+                    if (await FileAsync(message, match, body, cancellationToken)
+                        .ConfigureAwait(false) is ReplyFiling.Filed)
+                    {
+                        filed++;
+
+                        logger.LogInformation(
+                            "A reply to attempt {JobId} on request {RequestId} was filed, "
+                            + "resolved by {MatchedBy}.",
+                            match.Demand.JobId,
+                            match.Demand.RemovalRequestId,
+                            match.MatchedBy);
+                    }
                 }
 
                 await source.AcknowledgeAsync(message, cancellationToken).ConfigureAwait(false);
@@ -151,6 +161,7 @@ public sealed class MailIngestService(
     private async Task<ReplyFiling> FileAsync(
         InboundMessage message,
         AnsweredDemandMatch match,
+        string? body,
         CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
@@ -161,7 +172,7 @@ public sealed class MailIngestService(
 
         return await scope.ServiceProvider
             .GetRequiredService<IReplyFiler>()
-            .FileAsync(message, match, cancellationToken)
+            .FileAsync(message, match, body, cancellationToken)
             .ConfigureAwait(false);
     }
 }
