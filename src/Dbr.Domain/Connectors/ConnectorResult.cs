@@ -119,6 +119,36 @@ public abstract record ConnectorResult
     }
 
     /// <summary>
+    /// The id of the message this attempt handed to a relay, or <see langword="null"/> when
+    /// it handed one to nobody.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>On the base rather than on the one case that produces it today.</b> Whether a
+    /// message left is not the same question as which answer the attempt reached: a mailbox
+    /// connector reports <see cref="AwaitingBrokerResponse"/> because a deadline is now
+    /// running, and a connector that mailed a company and read a confirmation back would
+    /// report <see cref="Success"/> with the same thing to record. Hanging it off one case
+    /// would make the second of those a change to the contract rather than a connector
+    /// filling in a field it already has.
+    /// </para>
+    /// <para>
+    /// <b>Not a <see cref="Success.ReceiptRef"/>, and the two must not be run together.</b>
+    /// A receipt is a confirmation the company issued, which is what makes it evidence of
+    /// what the company did. This is this side's own name for the message it sent, and it is
+    /// worth keeping for a different pair of reasons: it is what a company that later says
+    /// it never received a demand can be asked to look up in its own logs, and it is what a
+    /// reply quotes in <c>In-Reply-To</c> when one comes back.
+    /// </para>
+    /// <para>
+    /// Without the angle brackets a header wears, because a header value has to be reduced
+    /// to that form before it can be compared with one of these — and picking the spelling
+    /// here is what saves every later comparison from having to try both.
+    /// </para>
+    /// </remarks>
+    public string? SentMessageId { get; init; }
+
+    /// <summary>
     /// The connector did something: submitted a form, sent a message, called an API.
     /// </summary>
     /// <remarks>

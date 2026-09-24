@@ -89,4 +89,29 @@ public class RemovalJob : ITenantScoped
     /// database rather than trusted.
     /// </remarks>
     public string? Detail { get; set; }
+
+    /// <summary>
+    /// The id the message this attempt sent went out under, or <see langword="null"/> when
+    /// it sent none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only a connector that hands a message to a relay writes one — a form is submitted and
+    /// answers on the page — so most attempts keep the null, and an absent id says nothing
+    /// about whether the attempt happened. The status column is what answers that.
+    /// </para>
+    /// <para>
+    /// It is kept for two later moments. A company that says it never received a demand can
+    /// be given the id its own server acknowledged, which is that company's record rather
+    /// than an assertion of ours. And a reply, when one arrives, quotes it in
+    /// <c>In-Reply-To</c> — which is how an answer is tied to the attempt it answers instead
+    /// of to whichever attempt at this company happens to be the most recent.
+    /// </para>
+    /// <para>
+    /// Without the angle brackets a header wears, so that a header value reduced to the same
+    /// form compares against this directly. The receipt it is written from already strips
+    /// them, and the column refuses one that has not been.
+    /// </para>
+    /// </remarks>
+    public string? SentMessageId { get; set; }
 }

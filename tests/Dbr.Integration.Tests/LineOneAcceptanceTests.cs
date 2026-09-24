@@ -237,6 +237,17 @@ public class LineOneAcceptanceTests(PostgresFixture postgres, OpenBaoFixture ope
         var attempt = Assert.Single(timeline.GetProperty("attempts").EnumerateArray().ToList());
 
         Assert.StartsWith("email.", attempt.GetProperty("connectorId").GetString(), StringComparison.Ordinal);
+
+        // And the id the demand actually went out under, read from both ends at once: what
+        // the relay saw in the header, and what a person is served when they ask what was
+        // done for them. This is the claim the column exists for — on the day a company says
+        // no demand ever arrived, the answer is an identifier that company's own server took
+        // — and it only holds if the two agree down to the brackets, which the header has
+        // and the record deliberately does not.
+        var sentMessageId = attempt.GetProperty("sentMessageId").GetString();
+
+        Assert.False(string.IsNullOrWhiteSpace(sentMessageId));
+        Assert.Equal($"<{sentMessageId}>", sent.Header("Message-Id"));
     }
 
     [Fact]
@@ -273,6 +284,15 @@ public class LineOneAcceptanceTests(PostgresFixture postgres, OpenBaoFixture ope
             "queued",
             await postgres.QueryAsOwnerAsync<string>(
                 $"SELECT status FROM public.removal_request WHERE id = '{requestId}'"));
+
+        // And nothing is recorded as having been sent. An id on this attempt would say a
+        // company is holding a demand the relay refused to take, which is the one reading of
+        // the column that could not be recovered from afterwards.
+        Assert.Null(await postgres.QueryAsOwnerAsync<string>(
+            $"""
+             SELECT sent_message_id FROM public.removal_job
+             WHERE removal_request_id = '{requestId}'
+             """));
     }
 
     /// <summary>

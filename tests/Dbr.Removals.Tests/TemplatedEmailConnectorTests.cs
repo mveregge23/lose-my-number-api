@@ -44,6 +44,46 @@ public class TemplatedEmailConnectorTests
         Assert.Equal(Deadline, awaiting.Deadline);
     }
 
+    /// <summary>
+    /// The answer carries the id the relay took the demand under, exactly as it was given.
+    /// </summary>
+    /// <remarks>
+    /// The one thing this side holds that a company can check against its own logs, and the
+    /// thing a reply quotes when one comes back. Asserted as an exact string rather than as
+    /// "not null": an id the connector decorated on the way past — brackets around it, a
+    /// prefix, a trim — is an id that matches no header that ever arrives, which looks
+    /// identical to a company that simply never answered.
+    /// </remarks>
+    [Fact]
+    public async Task The_answer_names_the_message_the_relay_took()
+    {
+        var sender = new RecordingSender("d3f8a1@relay.example.test");
+        var connector = Build(sender);
+
+        var result = await connector.ExecuteAsync(Context(), TestContext.Current.CancellationToken);
+
+        var awaiting = Assert.IsType<ConnectorResult.AwaitingBrokerResponse>(result);
+
+        Assert.Equal("d3f8a1@relay.example.test", awaiting.SentMessageId);
+    }
+
+    /// <summary>
+    /// A demand that never left names no message.
+    /// </summary>
+    /// <remarks>
+    /// An id on a failed attempt would say a company is holding a demand it was never sent,
+    /// which is the one reading of this field that cannot be recovered from later.
+    /// </remarks>
+    [Fact]
+    public async Task A_demand_the_relay_refused_names_no_message()
+    {
+        var connector = Build(new ThrowingSender(transient: true));
+
+        var result = await connector.ExecuteAsync(Context(), TestContext.Current.CancellationToken);
+
+        Assert.Null(Assert.IsType<ConnectorResult.Failed>(result).SentMessageId);
+    }
+
     [Fact]
     public async Task The_identity_arrives_as_it_is_held_and_not_escaped()
     {
@@ -283,7 +323,7 @@ public class TemplatedEmailConnectorTests
             JobMailbox.TryResolve(address, "removals.example.org", out jobId);
     }
 
-    private sealed class RecordingSender : IMailSender
+    private sealed class RecordingSender(string messageId = "test@example.test") : IMailSender
     {
         public List<OutboundMessage> Sent { get; } = [];
 
@@ -291,7 +331,7 @@ public class TemplatedEmailConnectorTests
         {
             Sent.Add(message);
 
-            return Task.FromResult(new MailReceipt("test@example.test"));
+            return Task.FromResult(new MailReceipt(messageId));
         }
     }
 

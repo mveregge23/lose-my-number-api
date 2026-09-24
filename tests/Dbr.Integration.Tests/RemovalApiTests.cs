@@ -547,7 +547,7 @@ public class RemovalApiTests(PostgresFixture postgres, OpenBaoFixture openBao) :
 
         // Written directly, the way a dispatcher will. Nothing creates jobs yet.
         await SeedAttemptAsync(account, id, 1, "failed");
-        await SeedAttemptAsync(account, id, 2, "succeeded");
+        await SeedAttemptAsync(account, id, 2, "succeeded", "b71f04c9@relay.example.test");
 
         var (_, body) = await _api.GetAsync($"{RemovalsPath}/{id}/timeline", account.Token);
 
@@ -558,6 +558,20 @@ public class RemovalApiTests(PostgresFixture postgres, OpenBaoFixture openBao) :
         Assert.Equal(2, attempts[1].GetProperty("attemptNumber").GetInt32());
         Assert.Equal("failed", attempts[0].GetProperty("status").GetString());
         Assert.Equal("generic-web-form", attempts[0].GetProperty("connectorId").GetString());
+
+        // The id the demand went out under, where one went out by mail. It is the part of
+        // this record a company can be asked to check against its own logs, so a timeline
+        // that carried everything else and not this would leave somebody with a history and
+        // nothing to quote from it.
+        Assert.Equal(
+            "b71f04c9@relay.example.test",
+            attempts[1].GetProperty("sentMessageId").GetString());
+
+        // And null on the attempt that sent nothing, which is the ordinary case: a client
+        // showing "sent as" has to be able to tell that from a field it failed to read.
+        Assert.Equal(
+            JsonValueKind.Null,
+            attempts[0].GetProperty("sentMessageId").ValueKind);
     }
 
     [Fact]
@@ -747,13 +761,20 @@ public class RemovalApiTests(PostgresFixture postgres, OpenBaoFixture openBao) :
     }
 
     /// <summary>Writes one attempt against a demand, the way a dispatcher will.</summary>
-    private async Task SeedAttemptAsync(Account account, Guid requestId, int number, string status) =>
+    private async Task SeedAttemptAsync(
+        Account account,
+        Guid requestId,
+        int number,
+        string status,
+        string? sentMessageId = null) =>
         await postgres.ExecuteAsOwnerAsync(
             $"""
              INSERT INTO public.removal_job
-                 (tenant_id, removal_request_id, connector_id, status, attempt_number, run_at)
+                 (tenant_id, removal_request_id, connector_id, status, attempt_number, run_at,
+                  sent_message_id)
                  VALUES ('{account.TenantId}', '{requestId}', 'generic-web-form', '{status}',
-                         {number}, now());
+                         {number}, now(),
+                         {(sentMessageId is null ? "NULL" : $"'{sentMessageId}'")});
              """);
 
     private async Task<Account> OpenAccountAsync(bool removals = true)

@@ -128,6 +128,17 @@ public static partial class ConnectorContract
     /// </remarks>
     public static string? Refuse(ConnectorCapabilities capabilities, ConnectorResult result)
     {
+        // Checked across every case rather than inside one of them, because the id is a
+        // fact about whether a message left rather than about which way the demand then
+        // moved. A malformed one is worth catching here for a reason the rest of this
+        // method does not share: nothing reads it until a reply arrives, which can be
+        // weeks later and is the worst possible moment to discover that what was stored
+        // could never have matched.
+        if (result is { SentMessageId: { } sent } && RefuseSentMessage(sent) is { } malformed)
+        {
+            return malformed;
+        }
+
         switch (result)
         {
             case ConnectorResult.Failed failed when string.IsNullOrWhiteSpace(failed.Detail):
@@ -173,6 +184,41 @@ public static partial class ConnectorContract
                 + "ran. A name is lower-case, starts with a letter or a digit, carries only "
                 + "dots, dashes and underscores after that, and is at most sixty-four "
                 + "characters.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Why this message id could not be matched against a header later, or
+    /// <see langword="null"/> when it could.
+    /// </summary>
+    /// <remarks>
+    /// Both rules are about the same failure seen from different sides. The stored form is
+    /// what a header value reduces to, so an id carrying the brackets a header puts around
+    /// it matches nothing that ever arrives, and a blank one is a row that looks like a
+    /// record of a sent demand and cannot be used as one — null already says no message
+    /// went out, and saying it twice in two spellings is how the second spelling stops
+    /// being read.
+    /// </remarks>
+    private static string? RefuseSentMessage(string sentMessageId)
+    {
+        if (string.IsNullOrWhiteSpace(sentMessageId))
+        {
+            return "This connector reports that it sent a message and gives nothing to name "
+                + "it by. A connector that handed nothing to a relay says so by reporting no "
+                + "id at all; a blank one is the same answer wearing the shape of something a "
+                + "company could be asked to look up.";
+        }
+
+        if (sentMessageId.Contains('<', StringComparison.Ordinal)
+            || sentMessageId.Contains('>', StringComparison.Ordinal))
+        {
+            return $"This connector reports the message id \"{sentMessageId}\", which is "
+                + "wearing the angle brackets a header puts around one. It is stored and "
+                + "matched in the form a header value reduces to, so a bracketed id would "
+                + "never match the reply that quotes it — and the demand would look like one "
+                + "no company ever answered.";
         }
 
         return null;

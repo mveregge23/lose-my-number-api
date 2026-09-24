@@ -118,9 +118,11 @@ public sealed class TemplatedEmailConnector : IBrokerConnector
             subject.Value,
             body.Value);
 
+        MailReceipt receipt;
+
         try
         {
-            await _sender.SendAsync(message, cancellationToken).ConfigureAwait(false);
+            receipt = await _sender.SendAsync(message, cancellationToken).ConfigureAwait(false);
         }
         catch (MailDeliveryException exception)
         {
@@ -139,11 +141,17 @@ public sealed class TemplatedEmailConnector : IBrokerConnector
         // a deletion request and a company receiving one are separated by however long the
         // deadline is, and only a verification scan closes that gap.
         //
-        // The relay's message id is deliberately not reported as a receipt. A receipt is a
-        // confirmation the company issued, and a mail server's own identifier for a message
-        // is this side's record rather than the company's acknowledgement — it is logged
-        // where it is generated, which is where it means what it says.
-        return new ConnectorResult.AwaitingBrokerResponse(context.Demand.DeadlineAt, Checkpoint: null);
+        // The relay's message id rides along, and deliberately not as a receipt. A receipt
+        // is a confirmation the company issued; this is this side's own name for what it
+        // sent, and the two answer different questions. Reported rather than left in the log
+        // line it was generated on, because both questions it answers are asked afterwards:
+        // a company saying nothing ever arrived is given an id its own server took, and a
+        // reply that does arrive quotes it, which is what ties an answer to this attempt
+        // rather than to the last one made of the same company.
+        return new ConnectorResult.AwaitingBrokerResponse(context.Demand.DeadlineAt, Checkpoint: null)
+        {
+            SentMessageId = receipt.MessageId,
+        };
     }
 
     /// <summary>

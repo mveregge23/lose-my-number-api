@@ -24,6 +24,9 @@ public class ConnectorContractTests
 {
     private static readonly Uri Statute = new("https://oag.ca.gov/privacy/ccpa");
 
+    private static readonly DateTimeOffset Deadline =
+        new(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+
     private static ConnectorCapabilities Needs(params IdentityField[] fields) =>
         new(ConnectorKind.Recipe, RemovalMethod.Email, fields.ToHashSet());
 
@@ -452,6 +455,71 @@ public class ConnectorContractTests
         Assert.Null(ConnectorContract.Refuse(
             Needs(IdentityField.Names),
             new ConnectorResult.Success(null, null)));
+    }
+
+    /// <summary>
+    /// A message id still wearing the brackets a header puts around it.
+    /// </summary>
+    /// <remarks>
+    /// The id is stored in the form a header value reduces to, so a bracketed one matches
+    /// nothing a reply ever quotes. Refused here rather than discovered later because
+    /// nothing reads the column until an answer arrives, which can be weeks after the
+    /// attempt — and by then the demand looks like one no company ever replied to.
+    /// </remarks>
+    [Theory]
+    [InlineData("<d3f8a1@relay.example.test>")]
+    [InlineData("d3f8a1@relay.example.test>")]
+    public void A_message_id_wearing_its_header_brackets_is_refused(string sentMessageId)
+    {
+        var refusal = ConnectorContract.Refuse(
+            Needs(IdentityField.Names),
+            new ConnectorResult.AwaitingBrokerResponse(Deadline, null)
+            {
+                SentMessageId = sentMessageId,
+            });
+
+        Assert.NotNull(refusal);
+    }
+
+    /// <summary>
+    /// A message id that is present and says nothing.
+    /// </summary>
+    /// <remarks>
+    /// Null already means no message was handed to a relay, so a blank one is that same
+    /// answer wearing the shape of something a company could be asked to look up.
+    /// </remarks>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void A_blank_message_id_is_refused(string sentMessageId)
+    {
+        var refusal = ConnectorContract.Refuse(
+            Needs(IdentityField.Names),
+            new ConnectorResult.AwaitingBrokerResponse(Deadline, null)
+            {
+                SentMessageId = sentMessageId,
+            });
+
+        Assert.NotNull(refusal);
+    }
+
+    [Fact]
+    public void An_id_in_the_form_a_reply_quotes_is_believed()
+    {
+        Assert.Null(ConnectorContract.Refuse(
+            Needs(IdentityField.Names),
+            new ConnectorResult.AwaitingBrokerResponse(Deadline, null)
+            {
+                SentMessageId = "d3f8a1@relay.example.test",
+            }));
+    }
+
+    [Fact]
+    public void An_attempt_that_sent_no_message_is_believed()
+    {
+        Assert.Null(ConnectorContract.Refuse(
+            Needs(IdentityField.Names),
+            new ConnectorResult.AwaitingBrokerResponse(Deadline, null)));
     }
 
     [Theory]
