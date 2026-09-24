@@ -191,4 +191,5 @@ public sealed record RemovalListing(RemovalRequest Request, Broker Broker);
 public sealed record RemovalTimeline(
     RemovalRequest Request,
     Broker Broker,
-    IReadOnlyList<RemovalJob> Attempts);
+    IReadOnlyList<RemovalJob> Attempts,
+    IReadOnlyList<BrokerReply> Replies);

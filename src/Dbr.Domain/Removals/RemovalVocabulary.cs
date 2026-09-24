@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Connectors;
+using Dbr.Domain.Mail;
 
 namespace Dbr.Domain.Removals;
 
@@ -120,6 +121,32 @@ public static class RemovalVocabulary
         "broker_form_changed" => ConnectorFailureReason.BrokerFormChanged,
         "rejected" => ConnectorFailureReason.Rejected,
         "unsupported" => ConnectorFailureReason.Unsupported,
+        _ => null,
+    };
+
+    /// <summary>
+    /// How the thing that tied a reply to an attempt is spelled on the filed row.
+    /// </summary>
+    /// <remarks>
+    /// Worth a column and therefore worth a spelling: which of the two resolved a reply is
+    /// a standing fact about whether this deployment's return addresses survive the relay
+    /// it sends through, and it is observable nowhere else.
+    /// </remarks>
+    public static string ToWire(ReplyMatch match) => match switch
+    {
+        ReplyMatch.MailboxAddress => "mailbox_address",
+        ReplyMatch.ThreadHeaders => "thread_headers",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(match),
+            match,
+            "Unmapped way of resolving a reply. Adding one means a migration widening the "
+            + "check constraint on broker_reply.matched_by as well."),
+    };
+
+    public static ReplyMatch? ParseReplyMatch(string? value) => value switch
+    {
+        "mailbox_address" => ReplyMatch.MailboxAddress,
+        "thread_headers" => ReplyMatch.ThreadHeaders,
         _ => null,
     };
 }
