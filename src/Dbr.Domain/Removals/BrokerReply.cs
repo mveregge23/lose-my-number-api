@@ -71,6 +71,19 @@ public class BrokerReply : ITenantScoped
     /// <summary>How it was tied to the attempt.</summary>
     public required ReplyMatch MatchedBy { get; init; }
 
+    /// <summary>What the company's answer was read as.</summary>
+    public required ReplyReading Reading { get; init; }
+
+    /// <summary>
+    /// The declared phrase that produced the reading, when one did.
+    /// </summary>
+    /// <remarks>
+    /// Catalog text rather than anything the company wrote about a person, which is what
+    /// makes it keepable while the body it was found in is not. Null exactly when the
+    /// reading is unclear.
+    /// </remarks>
+    public string? MatchedPhrase { get; init; }
+
     /// <summary>When the company sent it.</summary>
     public required DateTimeOffset ReceivedAt { get; init; }
 

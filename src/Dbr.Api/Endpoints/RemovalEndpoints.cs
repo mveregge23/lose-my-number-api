@@ -350,6 +350,11 @@ public static class RemovalEndpoints
     /// and deciding where that may live belongs to whatever has to read it.
     /// </para>
     /// <para>
+    /// A reading is recorded and nothing acts on it yet: settling a demand on a
+    /// confirmation, opening a refusal, putting a question in front of somebody are the
+    /// state machine's business. What this route does is let a person see what came back.
+    /// </para>
+    /// <para>
     /// <c>matchedBy</c> is served rather than kept internal because it is the one place a
     /// rewritten sender becomes visible. An instance whose replies all resolve by thread
     /// headers is one whose per-attempt return addresses are not surviving the relay it
@@ -365,6 +370,15 @@ public static class RemovalEndpoints
             from = reply.FromAddress,
             subject = reply.Subject,
             matchedBy = RemovalVocabulary.ToWire(reply.MatchedBy),
+
+            // What the answer was read as, and the catalog phrase that produced it. The
+            // phrase is served because a reading nobody can explain is a reading nobody
+            // should act on — and it is this project's own reviewed text rather than
+            // anything the company wrote about a person, which is why it can be shown at
+            // all when the message it was found in is not kept.
+            reading = RemovalVocabulary.ToWire(reply.Reading),
+            matchedPhrase = reply.MatchedPhrase,
+
             receivedAt = reply.ReceivedAt,
         };
 

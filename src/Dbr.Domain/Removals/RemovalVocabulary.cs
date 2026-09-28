@@ -149,4 +149,27 @@ public static class RemovalVocabulary
         "thread_headers" => ReplyMatch.ThreadHeaders,
         _ => null,
     };
+
+    /// <summary>How what a company's answer was read as is spelled on the filed row.</summary>
+    public static string ToWire(ReplyReading reading) => reading switch
+    {
+        ReplyReading.Unclear => "unclear",
+        ReplyReading.NeedsUs => "needs_us",
+        ReplyReading.Refused => "refused",
+        ReplyReading.Confirmed => "confirmed",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(reading),
+            reading,
+            "Unmapped reading of a reply. Adding one means a migration widening the check "
+            + "constraint on broker_reply.reading as well."),
+    };
+
+    public static ReplyReading? ParseReplyReading(string? value) => value switch
+    {
+        "unclear" => ReplyReading.Unclear,
+        "needs_us" => ReplyReading.NeedsUs,
+        "refused" => ReplyReading.Refused,
+        "confirmed" => ReplyReading.Confirmed,
+        _ => null,
+    };
 }

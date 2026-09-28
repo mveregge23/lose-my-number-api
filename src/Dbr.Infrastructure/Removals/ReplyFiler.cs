@@ -18,15 +18,30 @@ namespace Dbr.Infrastructure.Removals;
 /// The privileged half — working out whose reply this was — happened before it and is one
 /// statement wide.
 /// </remarks>
-public sealed class ReplyFiler(DbrDbContext db, TimeProvider clock) : IReplyFiler
+public sealed class ReplyFiler(DbrDbContext db, IBrokerReplyPhrases phrases, TimeProvider clock)
+    : IReplyFiler
 {
     public async Task<ReplyFiling> FileAsync(
         InboundMessage message,
         AnsweredDemandMatch match,
+        string? body,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(match);
+
+        // Which company this demand went to, which is what decides whose phrases the answer
+        // is read against. Read here rather than carried in from the mailbox side: the
+        // process reading a mailbox knows nothing about accounts, and the role that resolved
+        // the reply is not allowed to see which company a demand names.
+        var brokerId = await db.Set<RemovalRequest>()
+            .AsNoTracking()
+            .Where(request => request.Id == match.Demand.RemovalRequestId)
+            .Select(request => request.BrokerId)
+            .SingleAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var reading = ReplyReadings.Read(body, phrases.For(brokerId));
 
         db.Add(new BrokerReply
         {
@@ -38,6 +53,8 @@ public sealed class ReplyFiler(DbrDbContext db, TimeProvider clock) : IReplyFile
             FromAddress = message.From,
             Subject = message.Subject,
             MatchedBy = match.MatchedBy,
+            Reading = reading.Reading,
+            MatchedPhrase = reading.MatchedPhrase,
             ReceivedAt = message.ReceivedAt,
             FiledAt = clock.GetUtcNow(),
         });

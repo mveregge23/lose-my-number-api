@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Catalog;
+using Dbr.Domain.Mail;
 using Dbr.Domain.Recipes;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
@@ -54,6 +55,14 @@ public static class DemandCatalogReader
     public const string DefaultTemplateRoot = "catalog/legal-basis/templates";
 
     private const string RecipeName = "email.yaml";
+
+    /// <summary>The shortest run of characters this will accept as a phrase.</summary>
+    /// <remarks>
+    /// Long enough to be a clause rather than a word. The failure being priced is a
+    /// phrase like "removed", which appears in "we have not removed" — and a confirmation
+    /// read out of a refusal is a demand this instance would stop asking about.
+    /// </remarks>
+    private const int ShortestPhrase = 12;
 
     /// <summary>Reads everything from beside the running assembly.</summary>
     public static DemandCatalogReadResult Read() =>
@@ -170,7 +179,75 @@ public static class DemandCatalogReader
             return null;
         }
 
-        return new EmailRecipe(brokerId, mailbox);
+        return new EmailRecipe(brokerId, mailbox, ReadPhrases(name, file.Replies, problems));
+    }
+
+    /// <summary>
+    /// How a company's answers are recognised, as its file declares them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Optional, and absent for every company until somebody has read that company's
+    /// boilerplate. Absent means every reply from it is put in front of a person, which is
+    /// the right default and the reason this can be added a company at a time.
+    /// </para>
+    /// <para>
+    /// The bound on a phrase is the whole of the validation that matters. A short one
+    /// matches everything — "removed" appears in a message saying a listing has <em>not</em>
+    /// been removed — and the reading it produces is the one with the largest consequence.
+    /// So a phrase has to be long enough to be a phrase rather than a word, and the refusal
+    /// says why rather than just naming a number.
+    /// </para>
+    /// </remarks>
+    private static ReplyPhrases ReadPhrases(
+        string name,
+        ReplyPhrasesFile? file,
+        List<string> problems)
+    {
+        if (file is null)
+        {
+            return ReplyPhrases.None;
+        }
+
+        return new ReplyPhrases(
+            Phrases(name, "confirmed", file.Confirmed, problems),
+            Phrases(name, "refused", file.Refused, problems),
+            Phrases(name, "needsUs", file.NeedsUs, problems));
+    }
+
+    private static IReadOnlyList<string> Phrases(
+        string name,
+        string reading,
+        IReadOnlyList<string>? declared,
+        List<string> problems)
+    {
+        if (declared is null || declared.Count == 0)
+        {
+            return [];
+        }
+
+        var kept = new List<string>();
+
+        foreach (var phrase in declared)
+        {
+            var trimmed = phrase?.Trim() ?? string.Empty;
+
+            if (trimmed.Length < ShortestPhrase)
+            {
+                problems.Add(
+                    $"'{name}' recognises '{reading}' by '{trimmed}', which is too short to "
+                    + $"be a phrase — {ShortestPhrase} characters is the least. A word "
+                    + "matches sentences that mean the opposite of what it was written for, "
+                    + "and a reply read wrongly is a demand this instance stops asking "
+                    + "about.");
+
+                continue;
+            }
+
+            kept.Add(trimmed);
+        }
+
+        return kept;
     }
 
     private static IReadOnlyList<DemandTemplate> ReadTemplates(string root, List<string> problems)
@@ -393,6 +470,17 @@ public static class DemandCatalogReader
         public string? Mailbox { get; set; }
 
         public string? Description { get; set; }
+
+        public ReplyPhrasesFile? Replies { get; set; }
+    }
+
+    private sealed class ReplyPhrasesFile
+    {
+        public List<string>? Confirmed { get; set; }
+
+        public List<string>? Refused { get; set; }
+
+        public List<string>? NeedsUs { get; set; }
     }
 
     private sealed class DemandTemplateFile

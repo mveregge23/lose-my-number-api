@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using System.Text.RegularExpressions;
 using Dbr.Domain.Mail;
 using MailKit;
 using MailKit.Net.Imap;
@@ -23,12 +24,14 @@ namespace Dbr.Infrastructure.Mail;
 /// answers long before anybody decides which provider a production instance sends through.
 /// </para>
 /// <para>
-/// <b>Headers only.</b> The envelope and the two threading headers are everything that
-/// decides which attempt a message answers. The body is not downloaded, which is not
-/// merely thrift: a company's reply quotes the request it answers, so the prose is as
-/// likely to carry somebody's identity as the demand was, and a process that never fetches
-/// it cannot spill it. Whatever reads it later should be the thing that decides where it
-/// may go.
+/// <b>Headers on a pass, prose only on demand.</b> The envelope and the two threading
+/// headers are everything that decides which attempt a message answers, and most of what
+/// arrives in a mailbox answers none. So a pass downloads those, and the body is fetched
+/// afterwards for the few messages that turned out to be answers — which means the prose
+/// of everything else, including whatever else lands in an operator's mailbox, is never
+/// read by this process at all. What is fetched is matched against a company's declared
+/// phrases and dropped; a company's reply quotes the request it answers, and the safest
+/// thing to do with that is not to keep it.
 /// </para>
 /// <para>
 /// <b>Seen is the acknowledgement.</b> Unread means not yet filed, which is a flag the
@@ -45,7 +48,7 @@ namespace Dbr.Infrastructure.Mail;
 /// a handshake nobody is waiting on.
 /// </para>
 /// </remarks>
-public sealed class ImapMailSource(
+public sealed partial class ImapMailSource(
     IOptions<InboundMailOptions> options,
     ILogger<ImapMailSource> logger) : IInboundMailSource
 {
@@ -94,6 +97,37 @@ public sealed class ImapMailSource(
         await client.DisconnectAsync(true, cancellationToken).ConfigureAwait(false);
 
         return messages;
+    }
+
+    public async Task<string?> ReadBodyAsync(
+        InboundMessage message,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        using var client = new ImapClient();
+
+        // Read-only: fetching a message body must not be what marks it read. Acknowledging
+        // is a separate act that happens after something has been done with it, and a
+        // connection opened to look at prose should not be able to end that.
+        var folder = await OpenAsync(client, FolderAccess.ReadOnly, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!TryReadRef(message.SourceRef, folder.UidValidity, out var uid))
+        {
+            await client.DisconnectAsync(true, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        var mime = await folder.GetMessageAsync(uid, cancellationToken).ConfigureAwait(false);
+
+        await client.DisconnectAsync(true, cancellationToken).ConfigureAwait(false);
+
+        // The plain part when there is one. A company that sends only HTML gets its tags
+        // taken out crudely, which is enough for matching a phrase and is not enough for
+        // anything else — which is fine, because matching a phrase is the whole of what
+        // this is for and nothing keeps the result.
+        return mime.TextBody ?? Flattened(mime.HtmlBody);
     }
 
     public async Task AcknowledgeAsync(InboundMessage message, CancellationToken cancellationToken)
@@ -188,6 +222,21 @@ public sealed class ImapMailSource(
             ReceivedAt = summary.InternalDate ?? envelope.Date ?? DateTimeOffset.UtcNow,
         };
     }
+
+    /// <summary>
+    /// HTML with its tags removed, well enough to look for a sentence in.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately crude. A real parse would be better prose and is not needed: the only
+    /// consumer is a phrase match, and the result is never stored, displayed or sent
+    /// anywhere. Entities are left alone for the same reason — a company whose boilerplate
+    /// hinges on an ampersand gets read as unclear, which means a person looks at it.
+    /// </remarks>
+    private static string? Flattened(string? html) =>
+        html is null ? null : TagPattern().Replace(html, " ");
+
+    [GeneratedRegex("<[^>]*>", RegexOptions.Singleline)]
+    private static partial Regex TagPattern();
 
     /// <summary>
     /// The message a source reference names in this mailbox, if it still names one.

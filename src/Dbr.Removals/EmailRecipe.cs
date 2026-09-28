@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Max Veregge
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+using Dbr.Domain.Mail;
+
 namespace Dbr.Removals;
 
 /// <summary>
@@ -31,7 +33,11 @@ namespace Dbr.Removals;
 /// The local part of the opt-out mailbox: the <c>privacy</c> in
 /// <c>privacy@example.com</c>.
 /// </param>
-public sealed record EmailRecipe(Guid BrokerId, string Mailbox)
+/// <param name="Replies">
+/// How this company's answers are recognised, when anybody has written that down. Empty
+/// for a company nobody has, which means every reply from it is read by a person.
+/// </param>
+public sealed record EmailRecipe(Guid BrokerId, string Mailbox, ReplyPhrases Replies)
 {
     /// <summary>The mailbox this demand is addressed to at the company's own domain.</summary>
     public string AddressAt(string domain) => $"{Mailbox}@{domain}";

@@ -170,6 +170,94 @@ public class DemandCatalogReaderTests
         Assert.Contains(read.Problems, problem => problem.Contains(expected, StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A company's file can say how that company's answers are recognised.
+    /// </summary>
+    /// <remarks>
+    /// Optional, and absent for every company until somebody has read that company's
+    /// boilerplate — absent meaning every reply from it is put in front of a person, which
+    /// is what lets this be filled in one company at a time.
+    /// </remarks>
+    [Fact]
+    public void A_recipe_can_declare_how_a_company_answers()
+    {
+        var root = WriteRecipe(
+            $"brokerId: {Guid.NewGuid()}\nmailbox: privacy\n"
+            + "replies:\n  needsUs:\n    - \"we will consider your request resolved\"\n"
+            + "  confirmed:\n    - \"has been removed from our records\"\n");
+
+        var read = DemandCatalogReader.Read(root, Path.Combine(root, "no-templates"));
+
+        Assert.Empty(read.Problems);
+
+        var recipe = Assert.Single(read.Recipes);
+        Assert.Equal(["we will consider your request resolved"], recipe.Replies.NeedsUs);
+        Assert.Equal(["has been removed from our records"], recipe.Replies.Confirmed);
+        Assert.Empty(recipe.Replies.Refused);
+    }
+
+    [Fact]
+    public void A_recipe_saying_nothing_about_replies_has_every_reply_read_by_a_person()
+    {
+        var root = WriteRecipe($"brokerId: {Guid.NewGuid()}\nmailbox: privacy\n");
+
+        var read = DemandCatalogReader.Read(root, Path.Combine(root, "no-templates"));
+
+        Assert.True(Assert.Single(read.Recipes).Replies.IsEmpty);
+    }
+
+    /// <summary>
+    /// A phrase too short to be a phrase is refused.
+    /// </summary>
+    /// <remarks>
+    /// The validation that matters here. A word matches sentences that mean the opposite of
+    /// what it was written for — "removed" appears in "we have not removed" — and the
+    /// reading it would produce is the one with the largest consequence, because a demand
+    /// recorded as honoured is a demand nobody asks about again.
+    /// </remarks>
+    [Fact]
+    public void A_phrase_short_enough_to_match_the_opposite_is_refused()
+    {
+        var root = WriteRecipe(
+            $"brokerId: {Guid.NewGuid()}\nmailbox: privacy\n"
+            + "replies:\n  confirmed:\n    - \"removed\"\n");
+
+        var read = DemandCatalogReader.Read(root, Path.Combine(root, "no-templates"));
+
+        Assert.Contains(read.Problems, problem => problem.Contains("too short to be a phrase", StringComparison.Ordinal));
+        Assert.Empty(Assert.Single(read.Recipes).Replies.Confirmed);
+    }
+
+    /// <summary>
+    /// The company this build ships says how it answers, from answers it really sent.
+    /// </summary>
+    /// <remarks>
+    /// Guards the thing a refactor of the reader would break silently: phrases that parse
+    /// but reach nothing would leave every reply from the one company this build can read
+    /// coming out unclear, which looks exactly like a company nobody has described.
+    /// </remarks>
+    [Fact]
+    public void The_shipped_company_declares_how_it_answers()
+    {
+        var recipe = Assert.Single(
+            Shipped().Recipes,
+            candidate => candidate.BrokerId == Guid.Parse("edea346d-25ab-4eab-a9b7-d9b4c6132625"));
+
+        Assert.NotEmpty(recipe.Replies.NeedsUs);
+
+        // Nothing under confirmed, and deliberately: no answer this project has seen from
+        // the company says a listing is gone, and inventing the sentence it might use is
+        // the guess that would mark a demand honoured that nobody acted on.
+        Assert.Empty(recipe.Replies.Confirmed);
+
+        // And the worked example says nothing at all, which is what a company nobody has
+        // read the answers of looks like.
+        Assert.True(
+            Shipped().Recipes
+                .Single(candidate => candidate.BrokerId != recipe.BrokerId)
+                .Replies.IsEmpty);
+    }
+
     [Fact]
     public void Wording_nobody_reviewed_is_refused()
     {
