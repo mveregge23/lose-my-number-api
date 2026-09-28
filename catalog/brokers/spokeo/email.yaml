@@ -15,20 +15,42 @@ description: >
 
 mailbox: privacy
 
-# How Spokeo's answers are recognised, read from the two it sent on 2026-09-21 in reply to
-# the first demand this project made for real.
+# How Spokeo's answers are recognised, read from the four it has actually sent: two
+# automated ones on 2026-09-21 in reply to the first demand this project made for real, a
+# ticket receipt, and a person's answer on 2026-09-24 removing the listing.
 #
-# Both were automated and neither answered the message it was replying to: one is the
-# boilerplate the privacy mailbox sends to everything, the other a ticket receipt. What
-# makes them worth declaring is the sentence about a request nobody replies to being
-# considered resolved — a company that closes a request on the requester's silence is one
-# whose demands must not sit here reading as "waiting" while that clock runs.
+# The automated pair answered nothing the message said. What makes them worth declaring is
+# the sentence about a request nobody replies to being considered resolved — a company that
+# closes a request on the requester's silence is one whose demands must not sit here
+# reading as "waiting" while that clock runs.
 #
-# Nothing is declared under `confirmed`. No answer this project has seen from Spokeo says a
-# listing has been removed, and inventing the sentence a company might use to say so is
-# exactly the guess that would mark a demand honoured that nobody acted on. It gets filled
-# in when a real confirmation arrives and can be read.
+# `confirmed` was deliberately empty until a real confirmation arrived, because inventing
+# the sentence a company might use to say a listing is gone is the guess that would mark a
+# demand honoured that nobody acted on. One arrived, written by a person rather than
+# generated, which is worth knowing: it is prose, and the next agent may word it
+# differently.
+#
+# WHY THE PHRASE STARTS AT "I was". The obvious thing to lift out of that message is
+# "successfully remove the listing", and it is a trap: it sits unchanged inside "was unable
+# to successfully remove the listing", as does "able to successfully remove". A refusal
+# would be read as a confirmation, which is the one error that stops a demand being asked
+# about again. "I was able to" is not contained in "I was unable to", so that is where the
+# phrase begins.
+#
+# `refused` carries that negation for the same reason, and it is the one entry here that
+# was not read off a message this project received. It is declared as an interlock rather
+# than as a description: a refusal outranks a confirmation, so a message that turns out to
+# say the opposite of the one above is read as a refusal instead of being matched by the
+# tail of its own negation. Erring towards refused costs an answer that a person looks at;
+# erring the other way costs a listing nobody asks about again.
 replies:
+  confirmed:
+    - "I was able to successfully remove"
+
+  refused:
+    - "I was unable to"
+    - "I am unable to"
+
   needsUs:
     - "respond with confirmation that you are the person listed"
     - "we will consider your request resolved"

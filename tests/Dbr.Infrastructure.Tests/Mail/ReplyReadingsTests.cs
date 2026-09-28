@@ -42,9 +42,28 @@ public class ReplyReadingsTests
         consider your request resolved.
         """;
 
+    /// <summary>
+    /// The answer a person at the company sent on 2026-09-24, in their own words.
+    /// </summary>
+    /// <remarks>
+    /// Prose rather than boilerplate, which is what makes the phrase drawn from it fragile:
+    /// the next agent to answer one of these will word it differently. It is here so that
+    /// the phrase the catalog declares is known to match the message it was taken from.
+    /// </remarks>
+    private const string TheConfirmationThatCame =
+        """
+        Dear Requester,
+
+        I was able to successfully remove the listing(s) associated with the specific
+        information provided. Please allow 24-72 hours to see this reflect on our site.
+
+        If there's any other information you need to have removed, please don't hesitate to
+        reach out.
+        """;
+
     private static readonly ReplyPhrases Spokeo = new(
-        Confirmed: [],
-        Refused: [],
+        Confirmed: ["I was able to successfully remove"],
+        Refused: ["I was unable to", "I am unable to"],
         NeedsUs:
         [
             "respond with confirmation that you are the person listed",
@@ -96,6 +115,36 @@ public class ReplyReadingsTests
     /// that must not be lost — while a demand wrongly recorded as honoured is one nobody
     /// asks about again.
     /// </remarks>
+    [Fact]
+    public void The_removal_the_first_real_demand_won_reads_as_confirmed()
+    {
+        var read = ReplyReadings.Read(TheConfirmationThatCame, Spokeo);
+
+        Assert.Equal(ReplyReading.Confirmed, read.Reading);
+        Assert.Equal("I was able to successfully remove", read.MatchedPhrase);
+    }
+
+    /// <summary>
+    /// The same sentence negated is a refusal, not a confirmation.
+    /// </summary>
+    /// <remarks>
+    /// The trap the real confirmation walks into. "successfully remove the listing" sits
+    /// unchanged inside "unable to successfully remove the listing", so a phrase lifted from
+    /// the obvious place would read a refusal as a confirmation — the one error that stops a
+    /// demand being asked about again. Two things stop it: the phrase starts at "I was", and
+    /// the negation is declared as a refusal, which outranks a confirmation.
+    /// </remarks>
+    [Fact]
+    public void The_same_sentence_negated_is_not_read_as_a_removal()
+    {
+        var read = ReplyReadings.Read(
+            "I was unable to successfully remove the listing(s) associated with the specific "
+            + "information provided.",
+            Spokeo);
+
+        Assert.Equal(ReplyReading.Refused, read.Reading);
+    }
+
     [Fact]
     public void A_message_that_confirms_and_also_asks_is_read_as_asking()
     {

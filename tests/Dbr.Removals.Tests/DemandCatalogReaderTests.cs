@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 using Dbr.Domain.Catalog;
+using Dbr.Domain.Mail;
 using Dbr.Domain.Profiles;
 
 namespace Dbr.Removals.Tests;
@@ -244,11 +245,7 @@ public class DemandCatalogReaderTests
             candidate => candidate.BrokerId == Guid.Parse("edea346d-25ab-4eab-a9b7-d9b4c6132625"));
 
         Assert.NotEmpty(recipe.Replies.NeedsUs);
-
-        // Nothing under confirmed, and deliberately: no answer this project has seen from
-        // the company says a listing is gone, and inventing the sentence it might use is
-        // the guess that would mark a demand honoured that nobody acted on.
-        Assert.Empty(recipe.Replies.Confirmed);
+        Assert.NotEmpty(recipe.Replies.Confirmed);
 
         // And the worked example says nothing at all, which is what a company nobody has
         // read the answers of looks like.
@@ -256,6 +253,40 @@ public class DemandCatalogReaderTests
             Shipped().Recipes
                 .Single(candidate => candidate.BrokerId != recipe.BrokerId)
                 .Replies.IsEmpty);
+    }
+
+    /// <summary>
+    /// A refusal this build has no phrase for is never read as a removal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The trap the one real confirmation walks into. Lift the obvious words out of "I was
+    /// able to successfully remove the listing(s)" and you get "successfully remove the
+    /// listing", which sits unchanged inside every way of saying the opposite. The declared
+    /// refusals cover the wordings this project has reason to expect; this covers the ones
+    /// it does not, which is where a phrase chosen badly does its damage.
+    /// </para>
+    /// <para>
+    /// Deliberately not a general "no phrase matches its own negation" check. One was
+    /// written and thrown away: a negation written in front of a phrase leaves the phrase
+    /// there word for word whatever the phrase is, so the check passed for a safe phrase
+    /// and a dangerous one alike — assurance that a phrase had been thought about, and
+    /// nothing else. What can actually be asserted is that specific refusals nobody
+    /// declared do not come out as removals.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("We could not successfully remove the listing you provided.")]
+    [InlineData("We have not been able to successfully remove the listing you provided.")]
+    [InlineData("Our team declined to successfully remove the listing in question.")]
+    public void A_refusal_nobody_declared_a_phrase_for_is_not_read_as_a_removal(string refusal)
+    {
+        foreach (var recipe in Shipped().Recipes)
+        {
+            Assert.NotEqual(
+                ReplyReading.Confirmed,
+                ReplyReadings.Read(refusal, recipe.Replies).Reading);
+        }
     }
 
     [Fact]
